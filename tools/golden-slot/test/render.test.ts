@@ -76,6 +76,6 @@ describe('画面の描画', () => {
   it('図柄画像のパスは public/symbols 配下の SVG', () => {
     const html = renderToString(createElement(ReelWindow, { state: base }));
     expect(html).toMatch(/src="symbols\/seven\.svg"/);
-    expect(html).toMatch(/src="\/symbols\/g\.svg"/);
+    expect(html).toMatch(/src="symbols\/g\.svg"/);
   });
 });
