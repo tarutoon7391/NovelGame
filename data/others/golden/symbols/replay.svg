@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
+  <!-- リプレイ: 丸に RP。細長だと BAR と見分けにくいので円形にする -->
+  <defs>
+    <linearGradient id="p" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4fd1ff"/><stop offset="1" stop-color="#0a5f9e"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="30" r="25" fill="url(#p)" stroke="#ffffff" stroke-width="3"/>
+  <circle cx="50" cy="30" r="20" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.6"/>
+  <text x="50" y="38" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="22" text-anchor="middle" fill="#ffffff" letter-spacing="1">RP</text>
+</svg>

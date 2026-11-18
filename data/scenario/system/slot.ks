@@ -66,13 +66,75 @@ for (var i = 0; i < 6; i++) {
 [bg storage="bg_hall_aisle.gif" time="400"]
 #
 （どの台に座ろう。上のデータを、よく見て選ぼう）
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="40"   text="&f.slot_hall[0].label"  target="*sit"  exp="f.slot_pick = 0"  ]
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="105"  text="&f.slot_hall[1].label"  target="*sit"  exp="f.slot_pick = 1"  ]
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="170"  text="&f.slot_hall[2].label"  target="*sit"  exp="f.slot_pick = 2"  ]
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="235"  text="&f.slot_hall[3].label"  target="*sit"  exp="f.slot_pick = 3"  ]
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="300"  text="&f.slot_hall[4].label"  target="*sit"  exp="f.slot_pick = 4"  ]
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="365"  text="&f.slot_hall[5].label"  target="*sit"  exp="f.slot_pick = 5"  ]
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="390"  width="500"  y="430"  text="やっぱり、帰る"  target="*go_home"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="20"   text="&f.slot_hall[0].label"  target="*sit"  exp="f.slot_pick = 0"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="78"   text="&f.slot_hall[1].label"  target="*sit"  exp="f.slot_pick = 1"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="136"  text="&f.slot_hall[2].label"  target="*sit"  exp="f.slot_pick = 2"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="194"  text="&f.slot_hall[3].label"  target="*sit"  exp="f.slot_pick = 3"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="252"  text="&f.slot_hall[4].label"  target="*sit"  exp="f.slot_pick = 4"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="310"  text="&f.slot_hall[5].label"  target="*sit"  exp="f.slot_pick = 5"  ]
+;7台目：GOLDEN（Aタイプ）。中身は data/others/golden/（ソースは tools/golden-slot/ を Vite でビルドしたもの）
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="368"  text="No.107　GOLDEN（Aタイプ・新台）　データなし"  target="*sit_golden"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="390"  width="500"  y="426"  text="やっぱり、帰る"  target="*go_home"  ]
+[s]
+
+;---------------------------------------
+; GOLDEN に座って遊ぶ
+; 画面は data/others/golden/index.html を iframe で重ねて出す。
+; 「精算して帰る」を押すと、台から postMessage で結果が届いて *leave へ進む（デバッグラッシュと同じ形の f.slot_result）。
+;---------------------------------------
+*sit_golden
+[cm]
+[layopt layer="message0" visible="false"]
+[hidemenubutton]
+[stopbgm]
+[bg storage="bg_hall_aisle.gif" time="300"]
+[iscript]
+(function () {
+  // 設定は店の6台と同じ置き方（1が多め、6はまれ）
+  var r = Math.random();
+  var setting = r < 0.40 ? 1 : r < 0.65 ? 2 : r < 0.80 ? 3 : r < 0.90 ? 4 : r < 0.96 ? 5 : 6;
+  var c = TYRANO.kag.config || {};
+  var v = parseInt(c.defaultSeVolume, 10);
+  var vol = isNaN(v) ? 1 : Math.max(0, Math.min(1, v / 100));
+
+  var done = false;
+  var finish = function (res) {
+    if (done) return;
+    done = true;
+    window.removeEventListener("message", onMessage);
+    clearTimeout(readyTimer);
+    if (frame.parentNode) frame.parentNode.removeChild(frame);
+    f.slot_result = res;
+    f.money = res.money;
+    f.slot_total += res.back - res.invest;
+    TYRANO.kag.ftag.startTag("jump", { storage: "system/slot.ks", target: "*leave" });
+  };
+  // 台が開けなかった・途中で落ちたとき：お金は動かさずに店を出る
+  var fail = function (why) {
+    if (window.console) console.error("[golden] " + why);
+    finish({ money: f.money, invest: 0, back: 0, games: 0, at: 0, maxGet: 0, error: true });
+  };
+  var onMessage = function (e) {
+    var d = e.data || {};
+    if (d.source !== "golden-slot") return;
+    if (d.type === "ready") { clearTimeout(readyTimer); frame.focus(); return; }
+    if (d.type === "close" && d.result) finish(d.result);
+  };
+
+  var frame = document.createElement("iframe");
+  frame.id = "golden_frame";
+  frame.src = "./data/others/golden/index.html?embed=1&money=" + f.money + "&setting=" + setting + "&vol=" + vol;
+  frame.setAttribute("allowtransparency", "true");
+  frame.style.cssText = "position:absolute;left:0;top:0;width:1280px;height:720px;border:0;z-index:9000;background:transparent;";
+  window.addEventListener("message", onMessage);
+  var readyTimer = setTimeout(function () { fail("台を開けませんでした"); }, 15000);
+  try {
+    (document.querySelector(".tyrano_base") || document.body).appendChild(frame);
+  } catch (err) {
+    fail("台を開けませんでした " + err);
+  }
+})();
+[endscript]
 [s]
 
 ;---------------------------------------
