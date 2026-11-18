@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ST機 内部の確認用デモ</title>
+<style>
+  :root { --bg:#10141b; --panel:#19202b; --line:#2c3746; --ink:#e8edf3; --quiet:#8d99a8; --gold:#ffd23a; --red:#ff6b6b; --blue:#5aa9ff; --green:#5fd38d; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.6 "Yu Gothic","Meiryo",system-ui,sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:16px; display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
+  h1 { grid-column:1/-1; font-size:18px; margin:0; }
+  .note { grid-column:1/-1; color:var(--quiet); margin:-6px 0 0; font-size:12px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  h2 { font-size:13px; color:var(--quiet); margin:0 0 8px; font-weight:600; }
+  .big { font-size:24px; font-weight:700; }
+  .row { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .lamps { display:flex; gap:8px; margin-top:6px; }
+  .lamp { padding:4px 10px; border-radius:999px; border:1px solid var(--line); color:var(--quiet); }
+  .lamp.on { background:#3b2f08; border-color:var(--gold); color:var(--gold); font-weight:700; }
+  .lamp.extra { background:#3a1630; border-color:#ff7ad9; color:#ff9fe6; }
+  .bar { height:10px; background:#0c1016; border-radius:6px; overflow:hidden; margin-top:6px; }
+  .bar > div { height:100%; background:var(--gold); width:0; transition:width .2s; }
+  .controls { grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; }
+  button { font:inherit; padding:10px 16px; border-radius:8px; border:1px solid var(--line); background:#243042; color:var(--ink); cursor:pointer; }
+  button.main { background:#3b2f08; border-color:var(--gold); color:var(--gold); font-weight:700; min-width:160px; }
+  #result { grid-column:1/-1; }
+  .cutin { display:inline-block; padding:2px 10px; border-radius:6px; font-weight:700; color:#10141b; }
+  .cutin.blue { background:var(--blue); } .cutin.red { background:var(--red); } .cutin.gold { background:var(--gold); }
+  #log { grid-column:1/-1; max-height:320px; overflow:auto; font-size:12.5px; }
+  #log div { border-bottom:1px solid var(--line); padding:3px 0; }
+  .ev { color:var(--gold); }
+  @media (max-width:640px) { main { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>ST機 内部の確認用デモ（ST・ボーナスのみ）</h1>
+  <p class="note">見た目は仮です。抽選と状態の流れを確かめるための画面で、筐体・液晶の演出は先方が作ります。Space で1ゲーム回せます。</p>
+
+  <section>
+    <h2>状態</h2>
+    <div class="row"><span class="big" id="phase">-</span></div>
+    <div class="row">ST残り <span class="big" id="stGames">-</span> G <span id="battle"></span></div>
+    <div class="row">Vストック <b id="vstock">0</b> ／ 一連の獲得 <b id="chain">0</b>枚 ／ 差枚 <b id="net">0</b>枚 <span id="ending"></span></div>
+  </section>
+
+  <section>
+    <h2>対戦相手と弱点ランプ</h2>
+    <div class="big" id="enemy">-</div>
+    <div class="lamps" id="lamps"></div>
+  </section>
+
+  <section>
+    <h2>ポイントカウンタ（ボーナス中に貯まる）</h2>
+    <div class="row"><b id="points">0</b> / 20 ・ 次のバトルで増えるクリティカル役 <b id="extra">0</b></div>
+    <div class="bar"><div id="pointsBar"></div></div>
+  </section>
+
+  <section>
+    <h2>ボーナス</h2>
+    <div class="row"><span id="weapon">-</span></div>
+    <div class="row"><b id="bonusPaid">0</b> / <b id="bonusTarget">0</b> 枚</div>
+    <div class="bar"><div id="bonusBar"></div></div>
+  </section>
+
+  <div class="controls">
+    <button class="main" id="spin">回す（Space）</button>
+    <button id="auto10">10G オート</button>
+    <button id="autoBonus">次のボーナスまで</button>
+    <button id="restart">ST をはじめから</button>
+    <span style="color:var(--quiet);align-self:center">シード <span id="seed"></span></span>
+  </div>
+
+  <section id="result"><h2>直前のゲーム</h2><div id="last">-</div></section>
+  <section id="log"><h2>ログ（新しい順）</h2><div id="logBody"></div></section>
+</main>
+
+<script src="./st_engine.js"></script>
+<script>
+(function () {
+  var ROLE = { none: 'ハズレ', bell3: '3枚役', bell15: '15枚ベル', replay: 'リプレイ', suika: 'スイカ', chance: 'チャンス目', wcherry: '弱チェリー', scherry: '強チェリー', mcherry: '中段チェリー' };
+  var LAMP = { cherry: 'チェリー', suika: 'スイカ', chance: 'チャンス目', replay: 'リプレイ' };
+  var PHASE = { enemySelect: '敵決定ゲーム', st: 'ST中', weapon: '武器選択', bonus: 'ボーナス中', end: 'ST終了' };
+  var COLOR = { blue: '青', red: '赤', gold: '金' };
+  var seed = (Math.random() * 1e9) >>> 0;
+  var m, $ = function (id) { return document.getElementById(id); };
+
+  function log(html) { var d = document.createElement('div'); d.innerHTML = html; $('logBody').prepend(d); while ($('logBody').children.length > 400) $('logBody').lastChild.remove(); }
+
+  function boot() {
+    m = StSlot.createMachine({ seed: seed });
+    $('seed').textContent = seed;
+    $('logBody').innerHTML = '';
+    m.on(function (e) {
+      var d = e.data;
+      if (e.type === 'enemy') log('<span class="ev">▶ 対戦相手: ' + d.name + '（弱点: ' + (d.lamps.map(function (l) { return LAMP[l]; }).join('・') || 'なし') + '）</span>');
+      if (e.type === 'battleStart') log('<span class="ev">⚔ バトル開始' + (d.final ? '（勝利確定）' : '') + (d.extraLamps.length ? ' 追加の弱点: ' + d.extraLamps.map(function (l) { return LAMP[l]; }).join('・') : '') + '</span>');
+      if (e.type === 'direct') log('<span class="ev">★ 直撃当選' + (d.inBattle ? '（バトル中）' : '') + '</span>');
+      if (e.type === 'overkill') log('<span class="ev">💥 オーバーキル確定</span>');
+      if (e.type === 'battleEnd') log('<span class="ev">' + (d.win ? '🏆 撃破！' + (d.overkill ? ' オーバーキル' : '') + (d.upperCZ ? ' → 上位ATのCZ（未実装）' : '') : '… 敗北') + '</span>');
+      if (e.type === 'cutin') log('<span class="cutin ' + d.color + '">' + COLOR[d.color] + 'カットイン</span> ' + (d.win ? '7揃い！' : 'ハズレ'));
+      if (e.type === 'vstock') log('<span class="ev">V ストック獲得（' + d.count + '個）</span>');
+      if (e.type === 'vstockRevive') log('<span class="ev">V ストックで復活 → ボーナス放出</span>');
+      if (e.type === 'weapon') log('<span class="ev">🗡 武器: ' + d.name + ' ' + d.medals + '枚' + (d.overkill ? ' ＋オーバーキル ' + d.overkill + '枚' : '') + (d.presses ? '（連打 ' + d.presses.length + '回）' : '') + '</span>');
+      if (e.type === 'pointsMax') log('<span class="ev">ポイント満タン → 次のバトルのクリティカル役 +1（' + d.extraLamps + '）</span>');
+      if (e.type === 'bonusEnd') log('<span class="ev">ボーナス終了 ' + d.medals + '枚（一連 ' + d.chainMedals + '枚）</span>');
+      if (e.type === 'ending') log('<span class="ev">🎬 エンディング到達</span>');
+      if (e.type === 'stEnd') log('<span class="ev">■ ST終了（一連 ' + d.chainMedals + '枚）</span>');
+    });
+    render(null);
+  }
+
+  function render(r) {
+    var s = m.snapshot();
+    $('phase').textContent = PHASE[s.phase] || s.phase;
+    $('stGames').textContent = s.enemy ? s.stGames : '-';
+    $('battle').textContent = s.battle ? '（バトル中 残り' + s.battle.left + 'G・ゲーム数は減らない）' : '';
+    $('vstock').textContent = s.vstock; $('chain').textContent = s.chainMedals; $('net').textContent = s.totalNet;
+    $('ending').textContent = s.ending ? '・エンディング後' : '';
+    $('enemy').textContent = s.enemy ? s.enemy.name : '-';
+    var extra = s.battle ? s.battle.extraLamps : [];
+    $('lamps').innerHTML = ['cherry', 'suika', 'chance', 'replay'].map(function (l) {
+      var on = s.lamps.indexOf(l) >= 0, ex = extra.indexOf(l) >= 0;
+      return '<span class="lamp' + (on ? ' on' : '') + (ex ? ' extra' : '') + '">' + LAMP[l] + '</span>';
+    }).join('');
+    $('points').textContent = s.points; $('extra').textContent = s.extraLamps; $('pointsBar').style.width = (s.points / 20 * 100) + '%';
+    if (s.bonus) { $('weapon').textContent = { isshiki: '一式', mizuchi: 'ミズチ', bendigar: 'ベンディガー', kinnoago: '金ノ顎' }[s.bonus.weapon]; $('bonusPaid').textContent = s.bonus.paid; $('bonusTarget').textContent = s.bonus.target; $('bonusBar').style.width = (s.bonus.paid / s.bonus.target * 100) + '%'; }
+    else { $('weapon').textContent = '-'; $('bonusPaid').textContent = 0; $('bonusTarget').textContent = 0; $('bonusBar').style.width = '0'; }
+    if (r) {
+      var t = [r.game + 'G', PHASE[r.phase], ROLE[r.role] + (r.upgraded ? '（チェリー変換）' : '')];
+      if (r.critical) t.push('<b style="color:var(--gold)">クリティカル役</b>');
+      if (r.navi) t.push('ナビ: ' + ({ bell3: '3枚役', replay: 'リプレイ', yellow: '黄（15枚ベル）', white: '白' }[r.navi]));
+      if (r.cutin) t.push('<span class="cutin ' + r.cutin + '">' + COLOR[r.cutin] + '</span>');
+      $('last').innerHTML = t.join(' ／ ');
+    }
+    $('spin').disabled = s.phase === 'end';
+  }
+
+  function spin() { var r = m.lever(); if (r) { if (r.phase !== 'bonus' || r.role !== 'none') log(r.game + 'G ' + PHASE[r.phase] + ' ' + ROLE[r.role] + (r.critical ? ' ★クリティカル' : '')); } render(r); return r; }
+  $('spin').onclick = spin;
+  $('auto10').onclick = function () { for (var i = 0; i < 10; i++) if (!spin()) break; };
+  $('autoBonus').onclick = function () { for (var i = 0; i < 2000; i++) { var r = spin(); if (!r || r.phase === 'weapon') break; } };
+  $('restart').onclick = function () { seed = (Math.random() * 1e9) >>> 0; boot(); };
+  document.addEventListener('keydown', function (e) { if (e.code === 'Space') { e.preventDefault(); spin(); } });
+  boot();
+})();
+</script>
+</body>
+</html>

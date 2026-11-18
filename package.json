@@ -2,7 +2,9 @@
   "name": "sotuken",
   "private": true,
   "scripts": {
-    "start": "serve . -l tcp://0.0.0.0:${PORT:-3000} --no-clipboard"
+    "start": "serve . -l tcp://0.0.0.0:${PORT:-3000} --no-clipboard",
+    "test:st": "node --test tools/st-slot/engine.test.js",
+    "sim:st": "node tools/st-slot/sim.js"
   },
   "dependencies": {
     "serve": "^14.2.4"
