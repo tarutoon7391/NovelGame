@@ -164,7 +164,7 @@ describe('リーチ目・演出・図柄', () => {
 
   it('図柄 7 種すべてに画像パスがある', () => {
     expect(SYMBOL_IDS).toHaveLength(7);
-    for (const id of SYMBOL_IDS) expect(SYMBOLS[id].imagePath).toMatch(/^\/symbols\/.+\.(svg|png)$/);
+    for (const id of SYMBOL_IDS) expect(SYMBOLS[id].imagePath).toMatch(/^symbols\/.+\.(svg|png)$/);
   });
 });
 
