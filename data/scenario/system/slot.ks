@@ -73,16 +73,18 @@ for (var i = 0; i < 6; i++) {
 [glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="252"  text="&f.slot_hall[4].label"  target="*sit"  exp="f.slot_pick = 4"  ]
 [glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="310"  text="&f.slot_hall[5].label"  target="*sit"  exp="f.slot_pick = 5"  ]
 ;7台目：GOLDEN（Aタイプ）。中身は data/others/golden/（ソースは tools/golden-slot/ を Vite でビルドしたもの）
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="368"  text="No.107　GOLDEN（Aタイプ・新台）　データなし"  target="*sit_golden"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="420"  y="368"  text="No.107　GOLDEN（Aタイプ）"  target="*sit_frame"  exp="f.slot_frame = 'golden'"  ]
+;8台目：こおりくんの大冒険（AT機）。中身は data/others/koori/（ソースは tools/koori-slot/ を1ファイルにビルドしたもの）
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="670"  width="420"  y="368"  text="No.108　こおりくんの大冒険（AT）"  target="*sit_frame"  exp="f.slot_frame = 'koori'"  ]
 [glink  color="black"  storage="system/slot.ks"  size="22"  x="390"  width="500"  y="426"  text="やっぱり、帰る"  target="*go_home"  ]
 [s]
 
 ;---------------------------------------
-; GOLDEN に座って遊ぶ
-; 画面は data/others/golden/index.html を iframe で重ねて出す。
+; 別の台（GOLDEN・こおりくん）に座って遊ぶ。どちらの台かは f.slot_frame（'golden' / 'koori'）
+; 画面は data/others/golden/ または data/others/koori/ の index.html を iframe で重ねて出す。
 ; 「精算して帰る」を押すと、台から postMessage で結果が届いて *leave へ進む（デバッグラッシュと同じ形の f.slot_result）。
 ;---------------------------------------
-*sit_golden
+*sit_frame
 [cm]
 [layopt layer="message0" visible="false"]
 [hidemenubutton]
@@ -90,6 +92,11 @@ for (var i = 0; i < 6; i++) {
 [bg storage="bg_hall_aisle.gif" time="300"]
 [iscript]
 (function () {
+  var MACHINES = {
+    golden: { src: "./data/others/golden/index.html", source: "golden-slot" },
+    koori:  { src: "./data/others/koori/index.html",  source: "koori-slot" }
+  };
+  var m = MACHINES[f.slot_frame] || MACHINES.golden;
   // 設定は店の6台と同じ置き方（1が多め、6はまれ）
   var r = Math.random();
   var setting = r < 0.40 ? 1 : r < 0.65 ? 2 : r < 0.80 ? 3 : r < 0.90 ? 4 : r < 0.96 ? 5 : 6;
@@ -111,19 +118,19 @@ for (var i = 0; i < 6; i++) {
   };
   // 台が開けなかった・途中で落ちたとき：お金は動かさずに店を出る
   var fail = function (why) {
-    if (window.console) console.error("[golden] " + why);
+    if (window.console) console.error("[" + m.source + "] " + why);
     finish({ money: f.money, invest: 0, back: 0, games: 0, at: 0, maxGet: 0, error: true });
   };
   var onMessage = function (e) {
     var d = e.data || {};
-    if (d.source !== "golden-slot") return;
+    if (d.source !== m.source) return;
     if (d.type === "ready") { clearTimeout(readyTimer); frame.focus(); return; }
     if (d.type === "close" && d.result) finish(d.result);
   };
 
   var frame = document.createElement("iframe");
-  frame.id = "golden_frame";
-  frame.src = "./data/others/golden/index.html?embed=1&money=" + f.money + "&setting=" + setting + "&vol=" + vol;
+  frame.id = "slot_frame";
+  frame.src = m.src + "?embed=1&money=" + f.money + "&setting=" + setting + "&vol=" + vol;
   frame.setAttribute("allowtransparency", "true");
   frame.style.cssText = "position:absolute;left:0;top:0;width:1280px;height:720px;border:0;z-index:9000;background:transparent;";
   window.addEventListener("message", onMessage);

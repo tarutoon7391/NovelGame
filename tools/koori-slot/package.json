@@ -1,0 +1,25 @@
+{
+  "name": "koori-slot-aso",
+  "private": true,
+  "version": "0.1.0",
+  "description": "こおりくんの大冒険～最凶のASO摩天楼への挑戦～ (ゲーム数上乗せ型 AT 機)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:file": "node tools/build-file.mjs",
+    "preview": "vite preview",
+    "prestart": "npm run build",
+    "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "sim": "node tools/simulate.js",
+    "dump": "node tools/dump-logic.mjs",
+    "build:novel": "node tools/build-file.mjs && node -e \"require('fs').copyFileSync('play.html','../../data/others/koori/index.html')\""
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.11"
+  }
+}
