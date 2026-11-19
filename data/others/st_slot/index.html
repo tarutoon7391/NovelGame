@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ST機（仮の画面）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #05060a; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: manipulation; }
+</style>
+</head>
+<body>
+<canvas id="screen" width="640" height="360"></canvas>
+<script src="./st_engine.js"></script>
+<script src="./st_reels.js"></script>
+<script src="./st_art.js"></script>
+<script src="./st_screen.js"></script>
+</body>
+</html>

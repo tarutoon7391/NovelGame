@@ -4,14 +4,27 @@
 
 - 内部: `data/others/st_slot/st_engine.js`（素のJS・ビルド不要）
 - 仕様書: Claude Docs「ノベルゲーム用 ST機 仕様書 v0.1」
-- 確認用デモ: `data/others/st_slot/demo.html`（見た目は仮）
+- リール配列と制御: `data/others/st_slot/st_reels.js`（こおりくんの大冒険 v1.0 の配列が土台。引き込み無制限）
+- 仮の画面（ドット絵）: `data/others/st_slot/index.html`（`st_screen.js` と `st_art.js`）。側を作るときの参考に
+- 中身の確認用デモ: `data/others/st_slot/demo.html`（文字だけの画面）
 - 範囲: 今は **ST とボーナスだけ**。通常時・リール配列・最強ST・上位ATのCZ・オーバーキルの特化ゾーンは未実装
 
 ## 読み込み
 
 ```
 [loadjs storage="st_slot/st_engine.js"]
+[loadjs storage="st_slot/st_reels.js"]
 ```
+
+## リールの止め方
+
+```js
+var r = machine.lever();                       // 抽選（レバー）
+var ctl = StReels.createReelControl(r.shape);  // そのゲームの出目の形
+var res = ctl.stop(reel, pressTop);            // 押したときの上段の位置 → { top, slip }。top まで滑らせて止める
+```
+
+リールは下方向に回ります（k コマ滑ると上段は `STRIPS[reel][top - k]`）。止まった3リールの図柄は `StReels.gridAt(ctl.tops)`、揃ったラインは `StReels.lineWin(grid)` で分かります。
 
 ```js
 var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省略するとランダム）
@@ -45,6 +58,7 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 | `weapon` | 武器選択の結果（`weapon` イベントと同じ） |
 | `bonus` | ボーナス中の `{ paid, target }` |
 | `payout` | 払い出し枚数 |
+| `shape` | リールの出目の形（`st_reels.js` の `SHAPES` の名前）。`gase` はハズレのカットインで、押した順で外し方が決まる |
 
 ### `snapshot()`
 

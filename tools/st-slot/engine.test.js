@@ -110,3 +110,28 @@ test('同じシードなら同じ結果', () => {
   const run = () => { const m = createMachine({ seed: 42 }); const out = []; for (let i = 0; i < 500; i++) { const r = m.lever(); if (!r) break; out.push(r.role); } return out.join(','); };
   assert.strictEqual(run(), run());
 });
+
+test('リール: どの役の形も、どの押し順・どこで押しても作れる', () => {
+  const R = require('../../data/others/st_slot/st_reels.js');
+  const orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+  const shapes = Object.keys(R.SHAPES).filter((s) => !s.startsWith('gase')).concat('gase');
+  for (const sh of shapes) for (const o of orders) for (let press = 0; press < 21; press++) {
+    const c = R.createReelControl(sh);
+    for (const reel of o) c.stop(reel, (press + reel * 7) % 21);
+    const grid = R.gridAt(c.tops);
+    const name = sh === 'gase' ? R.gaseShape(o) : sh;
+    assert.ok(R.SHAPES[name](grid), `${sh} ${o.join('')} ${press}`);
+  }
+});
+
+test('リール: カットインのハズレは、押し順どおりのタイミングで外れる', () => {
+  const R = require('../../data/others/st_slot/st_reels.js');
+  for (let press = 0; press < 21; press++) {
+    // 逆押し: 右・中は中段7、左で外れ
+    let c = R.createReelControl('gase'); c.stop(2, press); c.stop(1, press); c.stop(0, press);
+    let g = R.gridAt(c.tops); assert.ok(g[2][1] === 'seven' && g[1][1] === 'seven' && g[0][1] !== 'seven');
+    // 中押し: 最初の中で中段7なし
+    c = R.createReelControl('gase'); c.stop(1, press); c.stop(0, press); c.stop(2, press);
+    g = R.gridAt(c.tops); assert.ok(g[1][1] !== 'seven');
+  }
+});

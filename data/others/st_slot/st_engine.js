@@ -423,6 +423,10 @@
         } else if (s.phase === 'st') playST(out);
         else if (s.phase === 'weapon') playWeapon(out);
         else if (s.phase === 'bonus') playBonus(out);
+        // リールの出目の形（st_reels.js の SHAPES の名前。'gase' はハズレのカットイン＝押した順で外し方が決まる）
+        if (out.cutin) out.shape = out.seven ? 'seven' : 'gase';
+        else if ((out.phase === 'st') && (out.role === 'none' || out.role === 'bell3')) out.shape = 'bell3';   // ST中のハズレは3枚役で返す
+        else out.shape = out.role === 'none' || !out.role ? 'none' : out.role;
         emit('game', out);
         return out;
       },
