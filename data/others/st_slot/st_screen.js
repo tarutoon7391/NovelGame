@@ -330,6 +330,11 @@
 
     }
 
+    // 3G目（つばぜり合い・決着）の前: レバーを叩け！
+    if (ui.state === 'idle' && ui.bfx && ui.bfx.fx.n === 2 && ui.bfx.done && t - ui.bfx.done > 900 && s.battle) {
+      g.fillStyle = '#000000aa'; g.fillRect(x, y + 98, w, 26);
+      if (Math.floor(t / 250) % 2) txt('レバーを叩け！', x + w / 2, y + 117, 18, '#ff3a3a', 'center', true);
+    }
     // オーバーキルの上乗せ特化ゾーン
     if (gp === 'okzone' && ui.okz && !(ui.okz.end && ui.msg && ui.msg.until > t)) {
       var z = ui.okz, pop = ui.state !== 'spinning' && t - z.at < 300 ? 4 : 0;
@@ -515,7 +520,10 @@
       if (ui.stfx.battle) enemyFlash = sd < 600 && Math.floor(t / 60) % 2;
       else { ex += sd < 400 ? Math.sin(sd / 400 * Math.PI) * 30 : 0; if (sd < 900) label = ['かわされた', '#8d99a8']; }
     }
-    if (s.enemy && !enemyFlash) img(A.enemy(s.enemy.id, bob, Math.floor(t / 150)), ex, ey, 3);
+    // 勝ったら敵を横向きにして倒れた風に（復活のときは、起き上がって攻撃したあと）
+    var enemyDown = (ui.scene && ui.scene.kind === 'victory') || (ui.revivedAt && t - ui.revivedAt > 1100);
+    if (s.enemy && enemyDown) img(A.enemy(s.enemy.id, 0, 0), ex, ey + 30, 3, { rotate: Math.PI / 2, alpha: 0.9 });
+    else if (s.enemy && !enemyFlash) img(A.enemy(s.enemy.id, bob, Math.floor(t / 150)), ex, ey, 3);
     if (label) txt(label[0], x + w / 2, y + 68, 22, label[1], 'center', true);
   }
 
