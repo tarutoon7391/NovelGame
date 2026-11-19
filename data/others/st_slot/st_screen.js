@@ -26,6 +26,25 @@
   // ---------------------------------------------------------------------
   var m, seed, ui;
   var qs = new URLSearchParams(location.search), firstSeed = qs.has('seed') ? Number(qs.get('seed')) : null;
+
+  // ノベルゲームに組み込むとき（?embed=1&money=所持金）: 1枚20円、クレジットが足りないと1,000円で50枚借りる。Esc で精算して帰る
+  var EMBED = qs.get('embed') === '1';
+  var MONEY0 = Math.max(0, Math.floor(Number(qs.get('money')) || 0));
+  var wallet = { credit: 0, invest: 0, games: 0 }, closed = false;
+  var PAY = { bell15: 15, bell3: 3, replay: 3 };
+  function post(msg) { try { if (window.parent !== window) window.parent.postMessage(Object.assign({ source: 'st-slot' }, msg), '*'); } catch (e) { /* 単体 */ } }
+  function ensureCredit() {
+    if (!EMBED || wallet.credit >= 3) return true;
+    if (MONEY0 - wallet.invest < 1000) return false;
+    wallet.invest += 1000; wallet.credit += 50;
+    return true;
+  }
+  function settle() {
+    if (!EMBED || closed || (ui.state !== 'idle' && ui.state !== 'over')) return;
+    closed = true;
+    var back = wallet.credit * 20;
+    post({ type: 'close', result: { money: MONEY0 - wallet.invest + back, invest: wallet.invest, back: back, games: wallet.games, at: 0, maxGet: 0 } });
+  }
   function boot() {
     seed = firstSeed != null ? firstSeed : (Math.random() * 1e9) >>> 0;
     firstSeed = null;
@@ -44,7 +63,7 @@
       shownMedals: 0
     };
     m.on(function (e) { ui.events.push(e); });
-    say('ST スタート！', 'Space でレバー、Z X C で停止', '#ffd23a', 2500);
+    say('ST スタート！', EMBED ? 'Space でレバー ／ Esc で精算して帰る' : 'Space でレバー、Z X C で停止', '#ffd23a', 2500);
   }
   function say(text, sub, color, ms) { ui.msg = { text: text, sub: sub || '', color: color || '#ffffff', until: now() + (ms || 1800) }; }
   function now() { return performance.now(); }
@@ -55,10 +74,12 @@
   function lever() {
     if (ui.state === 'mizuchi') return pushMizuchi();
     if (ui.state !== 'idle') return;
+    if (!ensureCredit()) { say('所持金が足りない…', 'Esc で精算して帰る', '#ff6a6a', 2500); return; }
+    if (EMBED) { wallet.credit -= 3; wallet.games++; }
     ui.events = []; ui.win = null; ui.fx = null; ui.msg = null; ui.sub2 = null;
     ui.view = m.snapshot();   // リールが止まるまでは、レバー前の状態を見せる（結果は止まってから）
     var r = m.lever();
-    if (!r) { ui.state = 'over'; say('ST 終了', 'R で ST をはじめから', '#ff6a6a', 99999); return; }
+    if (!r) { ui.state = 'over'; say('ST 終了', EMBED ? 'R でもう一度 ／ Esc で精算' : 'R で ST をはじめから', '#ff6a6a', 99999); return; }
     ui.game = r;
     ui.ctl = R.createReelControl(r.shape, r.naviOrder);
     ui.reels.forEach(function (rl) { rl.spinning = true; rl.target = null; });
@@ -104,6 +125,7 @@
     ui.win = R.lineWin(grid);
     var r = ui.game, show = [];
     if (r.naviOrder && !ui.ctl.followed) { m.missLast(); show.push(['取りこぼし…', '押し順ナビに従ってね', '#8d99a8']); }
+    if (EMBED) wallet.credit += PAY[ui.win] || 0;
     ui.events.forEach(function (e) {
       var d = e.data;
       if (e.type === 'enemy') show.push(['VS ' + d.name, '弱点: ' + (d.lamps.map(function (l) { return LAMPS.filter(function (x) { return x.id === l; })[0].name; }).join('・') || 'なし'), '#c4a0ff']);
@@ -293,8 +315,16 @@
     }
     txt(s.points + '/20', x + 25, y + 216, 11, '#ffffff', 'center');
     if (s.extraLamps) txt('弱点+' + s.extraLamps, x + 25, y + 232, 11, '#ffd23a', 'center', true);
-    txt('差枚', x + 25, 300, 10, '#8d99a8', 'center'); txt(String(s.totalNet), x + 25, 314, 12, '#ffffff', 'center', true);
-    txt('一連', x + 25, 330, 10, '#8d99a8', 'center'); txt(String(s.chainMedals), x + 25, 344, 12, '#ffffff', 'center', true);
+    if (EMBED) {
+      txt('クレジット', x + 25, 262, 10, '#8d99a8', 'center'); txt(String(wallet.credit), x + 25, 276, 14, '#ffd23a', 'center', true);
+      txt('所持金', x + 25, 296, 10, '#8d99a8', 'center'); txt((MONEY0 - wallet.invest) + '円', x + 25, 310, 11, '#ffffff', 'center', true);
+      var canSettle = ui.state === 'idle' || ui.state === 'over';
+      box(x - 4, 322, 58, 22, canSettle ? '#3b2f08' : '#1a1e2c', canSettle ? '#ffd23a' : '#3a3f5a');
+      txt('精算(Esc)', x + 25, 337, 10, canSettle ? '#ffd23a' : '#5a6080', 'center', true);
+    } else {
+      txt('差枚', x + 25, 300, 10, '#8d99a8', 'center'); txt(String(s.totalNet), x + 25, 314, 12, '#ffffff', 'center', true);
+      txt('一連', x + 25, 330, 10, '#8d99a8', 'center'); txt(String(s.chainMedals), x + 25, 344, 12, '#ffffff', 'center', true);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -337,17 +367,20 @@
     else if (e.code === 'KeyC' || e.code === 'ArrowRight') stop(2);
     else if (e.code === 'KeyB') pushMizuchi();
     else if (e.code === 'KeyR') boot();
+    else if (e.code === 'Escape') settle();
   });
   cv.addEventListener('pointerdown', function (e) {
     var r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
     for (var i = 0; i < 3; i++) { var rx = REEL.x + i * (REEL.cw + REEL.gap); if (x >= rx && x <= rx + REEL.cw && y >= 290 && y <= 320) return stop(i); }
     if (x >= 140 && x <= 200 && y >= 260 && y <= 330) return lever();
     if (x >= 450 && x <= 500 && y >= 285 && y <= 325) return pushMizuchi();
+    if (EMBED && x >= 20 && x <= 90 && y >= 318 && y <= 348) return settle();
     if (ui.state === 'over') return boot();
     if (ui.state === 'spinning') nextStop(); else lever();
   });
 
   boot();
   requestAnimationFrame(frame);
+  if (EMBED) post({ type: 'ready' });
   window.StScreen = { machine: function () { return m; }, ui: function () { return ui; } };
 })();
