@@ -70,7 +70,8 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 | --- | --- |
 | `phase` | 上と同じ。ST が終わると `end` |
 | `enemy` | `{ id, name }` |
-| `lamps` | 今ついている弱点ランプ（`cherry` `suika` `chance` `replay`） |
+| `lamps` | 今ついている弱点ランプ（`cherry` `suika` `chance` `replay`）。バトルで増えたランプは、その ST のあいだずっと残る |
+| `addedLamps` | 敵の弱点以外に増えたランプ（バトルで増えた分・最強ST の1つ） |
 | `stGames` | ST の残りゲーム数 |
 | `battle` | `{ left, extraLamps, final }` またはバトル外なら `null` |
 | `vstock` | Vストックの数 |

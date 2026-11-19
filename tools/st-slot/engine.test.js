@@ -17,7 +17,7 @@ function stMachine(enemy, rands) {
   const m = createMachine({ rand: seq(rands) });
   const s = m.debug.internal();
   s.phase = 'st';
-  s.st = { enemy, games: CONFIG.stGames, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false };
+  s.st = { enemy, games: CONFIG.stGames, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false, extra: [] };
   return { m, s };
 }
 
@@ -66,7 +66,7 @@ test('ポイント60で、次のバトルのクリティカル役が3つ増え�
   const m = createMachine({ rand: seq([band.mcherry]) });
   const s = m.debug.internal();
   s.phase = 'bonus';
-  s.st = { enemy: 'hannibal', games: 30, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false };
+  s.st = { enemy: 'hannibal', games: 30, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false, extra: [] };
   s.bonus = { weapon: 'isshiki', target: 200, paid: 0, games: 0 };
   m.lever();
   assert.strictEqual(s.extraLamps, 3);
@@ -79,7 +79,7 @@ test('武器選択で中段チェリーなら金ノ顎', () => {
     const mm = createMachine({ rand: seq([band.mcherry, 0.999, 0.5, 0.5]) });
     const ss = mm.debug.internal();
     ss.phase = 'seven';
-    ss.st = { enemy: 'hannibal', games: 0, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false };
+    ss.st = { enemy: 'hannibal', games: 0, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false, extra: [] };
     const r = mm.lever();
     assert.strictEqual(r.role, null);          // 7揃いのゲームでは小役を隠す
     assert.strictEqual(r.shape, 'seven');
@@ -95,7 +95,7 @@ test('ミズチは必ず200枚以上', () => {
     const m = createMachine({ seed });
     const s = m.debug.internal();
     s.phase = 'seven';
-    s.st = { enemy: 'hannibal', games: 0, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false };
+    s.st = { enemy: 'hannibal', games: 0, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false, extra: [] };
     m.lever();
     const r = m.lever();
     if (r.weapon.id === 'mizuchi') assert.ok(r.weapon.medals >= 200);
@@ -168,4 +168,17 @@ test('リール: カットインのハズレは、押し順どおりのタイミ
     c = R.createReelControl('gase'); c.stop(1, press); c.stop(0, press); c.stop(2, press);
     g = R.gridAt(c.tops); assert.ok(g[1][1] !== 'seven');
   }
+});
+
+test('バトルで増えた弱点ランプは、そのSTのあいだずっと残る', () => {
+  // ポイントで増えた分（2つ）を持ってハンニバル（弱点チャンス目）のSTへ。スイカでバトルに入り、4Gで負ける
+  const { m, s } = stMachine('hannibal', [band.suika, 0.999, 0.999, 0.1, 0.1, 0.999]);
+  s.st.extra = [];
+  s.extraLamps = 2;
+  m.lever();
+  const during = m.snapshot().lamps.length;
+  assert.strictEqual(during, 3);
+  for (let i = 0; i < 4; i++) m.lever();
+  assert.strictEqual(s.st.battle, null);
+  assert.strictEqual(m.snapshot().lamps.length, 3);   // バトルが終わっても残る
 });

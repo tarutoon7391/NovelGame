@@ -222,7 +222,8 @@
       var e = cfg.enemies[s.st.enemy];
       var lamps = e.lamps.slice();
       if (s.st.upperLamp && lamps.indexOf(s.st.upperLamp) < 0) lamps.push(s.st.upperLamp);
-      if (s.st.battle) for (var i = 0; i < s.st.battle.extra.length; i++) if (lamps.indexOf(s.st.battle.extra[i]) < 0) lamps.push(s.st.battle.extra[i]);
+      // バトルで増えたランプは、そのSTのあいだずっと残る
+      for (var i = 0; i < s.st.extra.length; i++) if (lamps.indexOf(s.st.extra[i]) < 0) lamps.push(s.st.extra[i]);
       return lamps;
     }
     function isCritical(role) { return !!LAMP_OF[role] && lampsNow().indexOf(LAMP_OF[role]) >= 0; }
@@ -247,7 +248,7 @@
       else enemy = pickWeighted(rand, cfg.enemyTable.base);
       s.nextEnemy = null;
       var sup = enemy === 'tsukuyomi' && rand() < cfg.superTsukuyomiRate;
-      s.st = { enemy: enemy, games: enemy === 'gekirin' ? cfg.gekirinStGames : cfg.stGames, superTsukuyomi: sup, battle: null, jiriki: false, finalBattle: false, upper: upper, upperLamp: null };
+      s.st = { enemy: enemy, games: enemy === 'gekirin' ? cfg.gekirinStGames : cfg.stGames, superTsukuyomi: sup, battle: null, jiriki: false, finalBattle: false, upper: upper, upperLamp: null, extra: [] };
       if (upper) s.st.upperLamp = randomExtraLamp(cfg.enemies[enemy].lamps);
       s.phase = 'st';
       emit('enemy', { enemy: enemy, name: cfg.enemies[enemy].name, lamps: lampsNow(), upper: upper, games: s.st.games });
@@ -256,19 +257,20 @@
 
     // ----- バトル -------------------------------------------------------------
     function startBattle(win, final) {
-      var extra = [], base = cfg.enemies[s.st.enemy].lamps.slice(), l;
+      var extra = [], base = lampsNow(), l;   // 今ついているランプ（前のバトルで増えた分も含む）以外から足す
       while (s.extraLamps > 0) {
         l = randomExtraLamp(base.concat(extra)); if (!l) break;
         extra.push(l); s.extraLamps--;
       }
       s.extraLamps = 0;
       if (s.st.enemy === 'amaterasu') {
-        l = ['cherry', 'suika', 'chance', 'replay'][Math.floor(rand() * 4)];   // 完全に均等
-        if (extra.indexOf(l) < 0) extra.push(l);
+        l = ['cherry', 'suika', 'chance', 'replay'][Math.floor(rand() * 4)];   // 完全に均等（もうついているランプなら増えない）
+        if (extra.indexOf(l) < 0 && base.indexOf(l) < 0) extra.push(l);
       }
       if (s.st.enemy === 'gekirin' && rand() < cfg.gekirinExtraLamp) {
         l = randomExtraLamp(base.concat(extra)); if (l) extra.push(l);
       }
+      for (var k = 0; k < extra.length; k++) if (s.st.extra.indexOf(extra[k]) < 0) s.st.extra.push(extra[k]);   // ST のあいだずっと残す
       s.st.battle = { left: cfg.battleGames, win: !!win, overkill: false, extra: extra, final: !!final, winAt3: false, result: null };
       emit('battleStart', { extraLamps: extra.slice(), lamps: lampsNow(), final: !!final });
     }
@@ -587,6 +589,7 @@
           game: s.game,
           enemy: st ? { id: st.enemy, name: cfg.enemies[st.enemy].name, upper: !!st.upper } : null,
           lamps: st ? lampsNow() : [],
+          addedLamps: st ? st.extra.slice().concat(st.upperLamp ? [st.upperLamp] : []) : [],   // 弱点以外に増えたランプ（最強ST・バトルで増えた分）
           stGames: st ? st.games : 0,
           battle: st && st.battle ? { left: st.battle.left, extraLamps: st.battle.extra.slice(), final: st.battle.final } : null,
           vstock: s.vstock,

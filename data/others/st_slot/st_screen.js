@@ -560,7 +560,7 @@
   }
 
   function drawGems(t, s) {
-    var x = 548, extra = s.battle ? s.battle.extraLamps : [];
+    var x = 548, extra = s.addedLamps || [];
     txt('弱点', x + 22, 30, 11, '#c9d3e0', 'center', true);
     LAMPS.forEach(function (L, k) {
       var on = s.lamps.indexOf(L.id) >= 0, ex = extra.indexOf(L.id) >= 0, y = 40 + k * 56;
