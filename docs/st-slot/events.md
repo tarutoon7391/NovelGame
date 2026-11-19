@@ -45,9 +45,9 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 
 | キー | 説明 |
 | --- | --- |
-| `phase` | そのゲームの状態。`enemySelect`（敵決定ゲーム）/ `st` / `weapon`（武器選択）/ `bonus` |
+| `phase` | そのゲームの状態。`enemySelect`（敵決定ゲーム）/ `st` / `seven`（ボーナス当選後の7揃い・擬似遊技）/ `reveal`（隠していた小役の答え合わせ）/ `bonus` |
 | `game` | 通算ゲーム数 |
-| `role` | 役。`none` `bell3` `replay` `suika` `chance` `wcherry` `scherry` `mcherry`（ボーナス中は `bell15` も） |
+| `role` | 役（`seven` のゲームでは `null`＝隠す）。`none` `bell3` `replay` `suika` `chance` `wcherry` `scherry` `mcherry`（ボーナス中は `bell15` も） |
 | `upgraded` | チェリー変換が起きたか |
 | `critical` | クリティカル役（弱点の役）だったか |
 | `navi` | ST中: `bell3` / `replay`（レア役は `null`）。ボーナス中: `yellow`（15枚ベル）/ `white`（リプレイか3枚役） |
@@ -55,7 +55,9 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 | `direct` | 直撃当選したか（ST中・バトル中） |
 | `battleStart` | このゲームでバトルに入ったか |
 | `battle.left` | バトルの残りゲーム数 |
-| `weapon` | 武器選択の結果（`weapon` イベントと同じ） |
+| `weapon` | `seven`: `{ id, name }`（第3停止で見せる。枚数はまだ）/ `reveal`: `{ id, name, medals, presses, overkill }`（レバーで枚数を見せる） |
+| `battleFx` | バトルの演出 `{ n, kind, aura, revive, overkill }`。1G `guard`/`hit`/`critical`、2G `hit`/`guard`/`counter`、3G `aura`=`blue`/`red`/`rainbow`、4G `victory`/`defeat`/`revive`（`revive`=`stopLock` 第3停止が押せない・`leverLock` 第3停止後レバーが効かない。2秒後に起き上がって勝利） |
+| `stFx` | ST中（バトル外）の演出 `{ kind, color }`。`slash`（ボスに切りかかる）/ `minion`（色つきの雑魚敵。色＝`red`チェリー・`green`スイカ・`purple`チャンス目・`blue`リプレイ。揃わなければ激熱）/ `panel`（4分割の液晶。`white`→`blue`→`green`→`red` の順にチャンス。白はノーチャンス） |
 | `bonus` | ボーナス中の `{ paid, target }` |
 | `payout` | 払い出し枚数 |
 | `naviOrder` | 押し順ナビ（例 `[1, 0, 2]` = 中→左→右）。ナビが出るゲームだけ。側は `createReelControl(shape, naviOrder)` に渡す。従わずベルを取りこぼしたら `machine.missLast()` を呼ぶ |
@@ -84,7 +86,7 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 
 | type | data | 出すタイミング |
 | --- | --- | --- |
-| `enemy` | `{ enemy, name, lamps }` | 敵決定ゲームで相手が決まった |
+| `enemy` | `{ enemy, name, lamps, upper, games }` | 敵決定ゲームで相手が決まった（`upper`＝最強ST、`games`＝ST のゲーム数。逆鱗ハンニバルは50） |
 | `battleStart` | `{ extraLamps, lamps, final }` | バトル開始。`final` はアマテラスの勝利確定バトル |
 | `direct` | `{ inBattle, overkill }` | 直撃当選（勝ちの告知に使う） |
 | `overkill` | `{ how }` | オーバーキル確定 |
@@ -92,7 +94,9 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 | `cutin` | `{ color, win }` | 7揃いカットイン（ハズレもある） |
 | `vstock` | `{ count }` | 7が揃って Vストック獲得 |
 | `vstockRevive` | `{ left }` | ST終了時に Vストックで復活 |
-| `weapon` | `{ id, name, medals, presses, overkill }` | 武器が決まった。ミズチは `presses`（連打ごとの加算枚数の並び） |
+| `bonusWin` | `{ id, name }` | ボーナス当選後の7揃いのゲーム。第3停止で武器を見せる |
+| `weapon` | `{ id, name, medals, presses, overkill }` | 答え合わせのゲームのレバー。ここで枚数を見せる。ミズチは `presses`（連打ごとの加算枚数の並び） |
+| `battleFx` / `stFx` | 上の表と同じ | 演出の抽選結果（レバーで始めて、結果は止まってから見せる） |
 | `upperCZ` | `{}` | 上位ATのCZへ（未実装） |
 | `bonusStart` | `{ target }` | ボーナス開始 |
 | `points` / `pointsMax` | `{ points, max, added }` / `{ extraLamps }` | ポイント加算 / 満タン |
@@ -102,6 +106,12 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 | `game` | `lever()` の戻り値と同じ | 毎ゲームの最後 |
 
 ## 側にお願いしたいこと（演出）
+
+- 結果はリールが全部止まってから見せる。バトル4G目の復活は違和感だけで知らせ、液晶では言わない
+- ボーナス当選後: 7揃いのゲームは押し順を出さない擬似遊技。第3停止で武器 → 次のゲームのレバーで枚数 → その出目で隠していた小役を見せる（液晶では言わない）
+- 敵選択: 8個のクリスタル（上段 アイテール・ツクヨミ・テスカトリポカ・アマテラス／下段 ハンニバル・ヴィーナス・カリギュラ・ディアウス・ビター）。逆鱗ハンニバルはクリスタルを全部壊してから出る
+- ボーナス中は敵を出さず、味方を真ん中に
+- 枚数決定画面（答え合わせのゲームが止まったあと）: 一式＝ボタン1回 / ミズチ＝連打（`presses`）/ ベンディガー＝長押しでオーラが上がる（白→青300以上→緑510以上→赤750以上→虹1000以上）、上がり切ったら「離せ」で枚数 / 金ノ顎＝ボタンで開始、510→750→1000→2000→3000 を1つずつ自動で壊していく
 
 - カットインが出たゲームは逆押しさせ、どこを押しても滑ってくる擬似遊技にする。押し順ごとの告知タイミングは仕様書の「押し順と告知」の表どおり
 - 武器がミズチのときは「ボタンを連打しろ」で、`presses` を1回ずつ見せる

@@ -243,6 +243,30 @@
   }
 
   // ===================================================================
+  // 雑魚敵 16x16（色つきのスライム。色はその色の役に対応）
+  // ===================================================================
+  var MINION = { red: ['#5a0a14', '#e8323a', '#ff9aa8'], green: ['#0a3a18', '#2fa84f', '#9fffb0'], purple: ['#2a0a4a', '#8a4cff', '#d0b0ff'], blue: ['#08183a', '#2f7bff', '#9fc4ff'] };
+  function minion(color, frame) {
+    return memo('minion:' + color + ':' + frame, function () {
+      var m = mk(16, 16), c = MINION[color] || MINION.blue;
+      var rows = frame ? ['................', '................', '................', '......kkkk......', '....kkmmmmkk....', '...kmmhhmmmmk...', '..kmmhhmmmmmmk..', '..kmmmmmmmmmmk..', '.kmmwkmmmmwkmmk.', '.kmmkkmmmmkkmmk.', '.kmmmmmmmmmmmmk.', '.kmmmmmkkmmmmmk.', '..kmmmmmmmmmmk..', '...kkkkkkkkkk...', '................', '................']
+                     : ['................', '................', '................', '................', '.....kkkkkk.....', '...kkmmmmmmkk...', '..kmmhhmmmmmmk..', '.kmmhhmmmmmmmmk.', '.kmmwkmmmmwkmmk.', '.kmmkkmmmmkkmmk.', 'kmmmmmmmmmmmmmmk', 'kmmmmmmkkmmmmmmk', '.kmmmmmmmmmmmmk.', '..kkkkkkkkkkkk..', '................', '................'];
+      map(m.g, rows, { k: c[0], m: c[1], h: c[2], w: '#ffffff' });
+      return m.c;
+    });
+  }
+
+  // 敵のシルエット（クリスタルの中に入れる）
+  function silhouette(id) {
+    return memo('sil:' + id, function () {
+      var src = enemy(id, 0, 0), m = mk(32, 32);
+      m.g.drawImage(src, 0, 0);
+      m.g.globalCompositeOperation = 'source-in'; m.g.fillStyle = '#0a0820'; m.g.fillRect(0, 0, 32, 32);
+      return m.c;
+    });
+  }
+
+  // ===================================================================
   // 宝石ランプ 20x20（チェリー=赤・スイカ=緑・チャンス目=紫・リプレイ=青）
   // ===================================================================
   var GEM = { red: ['#5a0a14', '#d81b3c', '#ff7a90', '#ffe0e6'], green: ['#0a3a18', '#2fa84f', '#7fe39a', '#e6ffe9'], purple: ['#2a0a4a', '#7a3cff', '#c4a0ff', '#f0e6ff'], blue: ['#08183a', '#2f7bff', '#8fbaff', '#e6f0ff'] };
@@ -256,5 +280,5 @@
     });
   }
 
-  root.StArt = { symbol: symbol, hero: hero, enemy: enemy, gem: gem };
+  root.StArt = { symbol: symbol, hero: hero, enemy: enemy, gem: gem, minion: minion, silhouette: silhouette };
 })(typeof self !== 'undefined' ? self : this);

@@ -41,7 +41,7 @@ test('中段チェリーはオーバーキル＋次のSTはアマテラス', () 
 
 test('バトル中はSTのゲーム数が減らない', () => {
   // 1G目: スイカ（ヴィーナス以外ならクリティカルでない）→ 7揃い外れ → 直撃抽選 外れ → バトル突入
-  const { m, s } = stMachine('hannibal', [band.suika, 0.999, 0.999]);
+  const { m, s } = stMachine('hannibal', [band.suika, 0.999, 0.999, 0.999]);
   m.lever();
   assert.ok(s.st.battle);
   const g = s.st.games;
@@ -52,7 +52,7 @@ test('バトル中はSTのゲーム数が減らない', () => {
 
 test('バトル中の直撃は勝ちに書き換え、もう一度引けばオーバーキル', () => {
   // 1G目: スイカでバトル突入（負け状態）/ 2G目: 強チェリー（クリティカルでない → 勝利確定）/ 3G目: 中段チェリー（オーバーキル）
-  const { m, s } = stMachine('hannibal', [band.suika, 0.999, 0.999, band.scherry, 0.999, 0.999, band.mcherry, 0.999]);
+  const { m, s } = stMachine('hannibal', [band.suika, 0.999, 0.999, 0.999, band.scherry, 0.999, 0.999, 0.5, band.mcherry, 0.999, 0.5]);
   m.lever();
   assert.strictEqual(s.st.battle.win, false);
   m.lever();
@@ -78,10 +78,14 @@ test('武器選択で中段チェリーなら金ノ顎', () => {
   for (let i = 0; i < 200; i++) {
     const mm = createMachine({ rand: seq([band.mcherry, 0.999, 0.5, 0.5]) });
     const ss = mm.debug.internal();
-    ss.phase = 'weapon';
+    ss.phase = 'seven';
     ss.st = { enemy: 'hannibal', games: 0, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false };
     const r = mm.lever();
-    if (r.weapon.id === 'kinnoago') hit++;
+    assert.strictEqual(r.role, null);          // 7揃いのゲームでは小役を隠す
+    assert.strictEqual(r.shape, 'seven');
+    const r2 = mm.lever();                      // 次のゲームで小役が出る
+    assert.strictEqual(r2.role, 'mcherry');
+    if (r.weapon.id === 'kinnoago' && r2.weapon.medals > 0) hit++;
   }
   assert.strictEqual(hit, 200);
 });
@@ -90,20 +94,50 @@ test('ミズチは必ず200枚以上', () => {
   for (let seed = 1; seed <= 300; seed++) {
     const m = createMachine({ seed });
     const s = m.debug.internal();
-    s.phase = 'weapon';
+    s.phase = 'seven';
     s.st = { enemy: 'hannibal', games: 0, superTsukuyomi: false, battle: null, jiriki: false, finalBattle: false };
+    m.lever();
     const r = m.lever();
     if (r.weapon.id === 'mizuchi') assert.ok(r.weapon.medals >= 200);
   }
 });
 
-test('エンディング後のSTはディアウス・ビターか最強STだけ', () => {
+test('エンディング後のSTはディアウス・ビターか、弱点ランプが1つ多い最強ST', () => {
+  let upper = 0;
   for (let seed = 1; seed <= 300; seed++) {
     const m = createMachine({ seed });
     m.debug.internal().ending = true;
     const r = m.lever();
-    assert.ok(r.enemy === 'dyaus' || r.enemy === 'saikyo', r.enemy);
+    const st = m.debug.internal().st;
+    if (r.enemy !== 'dyaus') {
+      upper++;
+      assert.ok(st.upper && st.upperLamp, r.enemy);
+      assert.strictEqual(m.snapshot().lamps.length, CONFIG.enemies[r.enemy].lamps.length + 1);
+    }
   }
+  assert.ok(upper > 50 && upper < 130);
+});
+
+test('逆鱗ハンニバル戦はST 50G', () => {
+  const m = createMachine({ seed: 3 });
+  const s = m.debug.internal();
+  s.chainMedals = 1200;
+  const r = m.lever();
+  assert.strictEqual(r.enemy, 'gekirin');
+  assert.strictEqual(m.snapshot().stGames, 50);
+});
+
+test('バトル4Gの演出: 3G目のレバーまでに勝っていれば4G目は勝利、4G目で勝てば復活（違和感）', () => {
+  // 1G目: スイカでバトル突入（負け）→ 1〜3G目はハズレ → 4G目に強チェリー（勝利確定）
+  const { m } = stMachine('hannibal', [band.suika, 0.999, 0.999, 0.999, 0.999, 0.999, 0.5, 0.999, 0.999, 0.5, 0.999, 0.999, 0.5, band.scherry, 0.999, 0.999, 0.5]);
+  m.lever();
+  const fx = [];
+  for (let i = 0; i < 4; i++) fx.push(m.lever().battleFx);
+  assert.deepStrictEqual(fx.map((f) => f.n), [1, 2, 3, 4]);
+  assert.ok(fx[2].aura);
+  assert.strictEqual(fx[3].kind, 'revive');
+  assert.ok(fx[3].revive === 'stopLock' || fx[3].revive === 'leverLock');
+  assert.strictEqual(m.snapshot().phase, 'seven');
 });
 
 test('同じシードなら同じ結果', () => {

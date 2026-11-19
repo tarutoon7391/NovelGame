@@ -21,7 +21,30 @@
   var CONFIG = {
     bet: 3,
     stGames: 30,
+    gekirinStGames: 50,   // 逆鱗ハンニバル戦だけ ST 50G
     battleGames: 4,
+
+    // バトル4Gの演出（勝っているか＝その時点で直撃当選しているかで振り分け。仮の占有率）
+    battleFx: {
+      g1: { win: { guard: 30, hit: 40, critical: 30 }, lose: { guard: 75, hit: 22, critical: 3 } },     // 味方の攻撃
+      g2: { win: { hit: 30, guard: 40, counter: 30 }, lose: { hit: 75, guard: 22, counter: 3 } },      // 敵の攻撃
+      g3: { win: { blue: 30, red: 40, rainbow: 30 }, lose: { blue: 85, red: 15 } }                      // つばぜり合いのオーラ
+    },
+    // ST中（バトル外）の演出。結果（何もなし／バトル突入／直撃）ごとに振り分け。仮の占有率
+    //   slash: 味方がボスに切りかかる / minion: 色つきの雑魚敵を切る（色＝その色の役が揃う。揃わなければ激熱）/ panel: 4分割の液晶（白→青→緑→赤の順にチャンス）
+    stFx: {
+      kinds: {
+        none:   { colored: { minion: 40, panel: 30, slash: 15, plain: 15 }, plain: { panel: 15, slash: 8, plain: 77 } },
+        battle: { colored: { minion: 35, panel: 40, slash: 25 }, plain: { panel: 60, slash: 40 } },
+        direct: { colored: { minion: 35, panel: 40, slash: 25 }, plain: { panel: 60, slash: 40 } }
+      },
+      panel: { none: { white: 70, blue: 22, green: 7, red: 1 }, battle: { blue: 40, green: 40, red: 20 }, direct: { blue: 15, green: 35, red: 50 } },
+      minionMismatch: 0.5   // 直撃のとき、雑魚敵の色を役と違う色にする（＝揃わない激熱）割合
+    },
+    replayNavi: 0.5,        // ST中のリプレイ: ナビあり:ナビなし = 1:1
+
+    // 4G目の復活（3G目のレバーまでに勝っていなくて、4G目で直撃を引いた）。違和感の種類
+    revive: { stopLock: 50, leverLock: 50 },
 
     // 役の確率（1/x）。残りはハズレ（ベル含む）
     roles: {
@@ -58,7 +81,7 @@
       dyaus:      { name: 'ディアウス・ビター', lamps: ['chance'] },
       amaterasu:  { name: 'アマテラス', lamps: [] },
       gekirin:    { name: '逆鱗ハンニバル', lamps: [] },
-      saikyo:     { name: '最強ST（仮）', lamps: [] }   // 仮: 中身が決まるまでアマテラスと同じ動き
+      saikyo:     { name: '最強ST', lamps: [] }   // 使わない（最強ST は「ふつうの敵＋ランプ1つ追加」）
     },
     // 敵決定ゲームの振り分け（引いた役ごと）
     enemyTable: {
@@ -70,7 +93,7 @@
     gekirinMedals: 1000,         // 一連のSTの獲得がこれを超えたら、次のSTで逆鱗ハンニバル（1回だけ）
     gekirinExtraLamp: 0.5,
     dyausOverkill: 0.70,
-    ending: { diff: 1900, oneShot: 2400, dyaus: 0.70 },   // エンディング後: 70%でディアウス・ビター、30%で最強ST
+    ending: { diff: 1900, oneShot: 2400, dyaus: 0.70 },   // エンディング後: 70%でディアウス・ビター、30%で最強ST（ふつうの敵＋弱点ランプ1つ追加）
 
     // バトルで足すランプ（ポイント・アマテラス・逆鱗）。リプレイはめったに出ない（仮の重み）
     extraLampWeights: { cherry: 1, suika: 1, chance: 1, replay: 0.15 },
@@ -135,7 +158,7 @@
     var listeners = [];
 
     var s = {
-      phase: 'enemySelect',   // enemySelect → st ⇄ battle → weapon → bonus → enemySelect … / end
+      phase: 'enemySelect',   // enemySelect → st ⇄ battle → seven（7揃い） → reveal（小役の答え合わせ） → bonus → enemySelect … / end
       game: 0,
       st: null,               // { enemy, games, superTsukuyomi, battle, jiriki }
       vstock: 0,
@@ -147,6 +170,7 @@
       ending: false,
       totalNet: 0,            // 差枚（ST中のハズレの -3 も含む）
       pending: null,          // 当選後の流れ { overkill, upperCZ, reason }
+      hidden: null,           // 7揃いのゲームで隠して引いた小役と武器
       bonus: null             // { weapon, target, paid, games, presses }
     };
 
@@ -174,7 +198,7 @@
 
     // ナビ（ST中: 3枚役とリプレイだけ。ハズレとレア役はナビなし）
     function stNavi(role) {
-      if (role === 'replay') return 'replay';
+      if (role === 'replay') return rand() < cfg.replayNavi ? 'replay' : null;   // ナビなしでも揃うことがある
       if (role === 'bell3') return 'bell3';
       return null;
     }
@@ -185,6 +209,7 @@
     function lampsNow() {
       var e = cfg.enemies[s.st.enemy];
       var lamps = e.lamps.slice();
+      if (s.st.upperLamp && lamps.indexOf(s.st.upperLamp) < 0) lamps.push(s.st.upperLamp);
       if (s.st.battle) for (var i = 0; i < s.st.battle.extra.length; i++) if (lamps.indexOf(s.st.battle.extra[i]) < 0) lamps.push(s.st.battle.extra[i]);
       return lamps;
     }
@@ -198,8 +223,9 @@
 
     // ----- 敵決定ゲーム -------------------------------------------------------
     function decideEnemy(role) {
-      var enemy;
-      if (s.ending) enemy = rand() < cfg.ending.dyaus ? 'dyaus' : 'saikyo';
+      var enemy, upper = false;
+      if (s.ending && rand() < cfg.ending.dyaus) enemy = 'dyaus';
+      else if (s.ending) { upper = true; enemy = pickWeighted(rand, cfg.enemyTable.base); }   // 最強ST
       else if (s.chainMedals >= cfg.gekirinMedals && !s.gekirinDone) { enemy = 'gekirin'; s.gekirinDone = true; }
       else if (s.nextEnemy) enemy = s.nextEnemy;
       else if (role === 'mcherry') enemy = 'amaterasu';
@@ -209,9 +235,10 @@
       else enemy = pickWeighted(rand, cfg.enemyTable.base);
       s.nextEnemy = null;
       var sup = enemy === 'tsukuyomi' && rand() < cfg.superTsukuyomiRate;
-      s.st = { enemy: enemy, games: cfg.stGames, superTsukuyomi: sup, battle: null, jiriki: false, finalBattle: false };
+      s.st = { enemy: enemy, games: enemy === 'gekirin' ? cfg.gekirinStGames : cfg.stGames, superTsukuyomi: sup, battle: null, jiriki: false, finalBattle: false, upper: upper, upperLamp: null };
+      if (upper) s.st.upperLamp = randomExtraLamp(cfg.enemies[enemy].lamps);
       s.phase = 'st';
-      emit('enemy', { enemy: enemy, name: cfg.enemies[enemy].name, lamps: cfg.enemies[enemy].lamps.slice() });
+      emit('enemy', { enemy: enemy, name: cfg.enemies[enemy].name, lamps: lampsNow(), upper: upper, games: s.st.games });
       // superTsukuyomi は画面に出さない（イベントにも載せない）
     }
 
@@ -223,14 +250,14 @@
         extra.push(l); s.extraLamps--;
       }
       s.extraLamps = 0;
-      if (s.st.enemy === 'amaterasu' || s.st.enemy === 'saikyo') {
+      if (s.st.enemy === 'amaterasu') {
         l = ['cherry', 'suika', 'chance', 'replay'][Math.floor(rand() * 4)];   // 完全に均等
         if (extra.indexOf(l) < 0) extra.push(l);
       }
       if (s.st.enemy === 'gekirin' && rand() < cfg.gekirinExtraLamp) {
         l = randomExtraLamp(base.concat(extra)); if (l) extra.push(l);
       }
-      s.st.battle = { left: cfg.battleGames, win: !!win, overkill: false, extra: extra, final: !!final };
+      s.st.battle = { left: cfg.battleGames, win: !!win, overkill: false, extra: extra, final: !!final, winAt3: false, result: null };
       emit('battleStart', { extraLamps: extra.slice(), lamps: lampsNow(), final: !!final });
     }
 
@@ -249,20 +276,22 @@
       s.st.battle = null;
       if (b.win) {
         var overkill = b.overkill || (s.st.enemy === 'dyaus' && rand() < cfg.dyausOverkill);
-        var nextAma = (s.st.enemy === 'amaterasu' || s.st.enemy === 'saikyo') && s.st.jiriki;
+        var nextAma = s.st.enemy === 'amaterasu' && s.st.jiriki;
         if (nextAma) s.nextEnemy = 'amaterasu';
+        b.result = { win: true, overkill: overkill };
         emit('battleEnd', { win: true, overkill: overkill, upperCZ: s.st.enemy === 'gekirin' });
         s.pending = { overkill: overkill, upperCZ: s.st.enemy === 'gekirin', reason: 'battle' };
-        s.phase = 'weapon';
+        s.phase = 'seven';
         return;
       }
+      b.result = { win: false };
       emit('battleEnd', { win: false });
       if (s.st.games <= 0) endST();
     }
 
     function endST() {
       // アマテラス: ゲーム数を使い切ったら勝利確定のバトル（そこで自力で勝てなければ、次はアマテラスではない）
-      if ((s.st.enemy === 'amaterasu' || s.st.enemy === 'saikyo') && !s.st.finalBattle) {
+      if (s.st.enemy === 'amaterasu' && !s.st.finalBattle) {
         s.st.finalBattle = true; s.st.jiriki = false;
         startBattle(true, true);
         return;
@@ -271,12 +300,46 @@
         s.vstock--;
         emit('vstockRevive', { left: s.vstock });
         s.pending = { overkill: false, upperCZ: false, reason: 'vstock' };
-        s.phase = 'weapon';
+        s.phase = 'seven';
         return;
       }
       emit('stEnd', { chainMedals: s.chainMedals });
       s.phase = 'end';
       s.st = null; s.points = 0; s.extraLamps = 0; s.chainMedals = 0; s.gekirinDone = false; s.nextEnemy = null;
+    }
+
+    // バトルの演出（n = バトルの何ゲーム目か）。勝ち負けはその時点の状態で振り分ける
+    function battleFx(b, n) {
+      var t = cfg.battleFx;
+      if (n === 1) return { n: 1, kind: pickWeighted(rand, b.win ? t.g1.win : t.g1.lose) };
+      if (n === 2) return { n: 2, kind: pickWeighted(rand, b.win ? t.g2.win : t.g2.lose) };
+      if (n === 3) return { n: 3, aura: pickWeighted(rand, b.win ? t.g3.win : t.g3.lose) };
+      if (n === 4) {
+        var r = b.result || { win: b.win };
+        if (b.winAt3) return { n: 4, kind: 'victory', overkill: !!r.overkill };
+        if (r.win) return { n: 4, kind: 'revive', revive: pickWeighted(rand, cfg.revive), overkill: !!r.overkill };
+        return { n: 4, kind: 'defeat' };
+      }
+      return null;
+    }
+
+    // ST中（バトル外）の演出の抽選
+    var MINION_COLOR = { wcherry: 'red', scherry: 'red', mcherry: 'red', suika: 'green', chance: 'purple', replay: 'blue' };
+    function stFx(role, result, cutin) {
+      if (cutin) return null;
+      var colored = !!MINION_COLOR[role];
+      var kind = pickWeighted(rand, cfg.stFx.kinds[result][colored ? 'colored' : 'plain']);
+      if (kind === 'plain') return null;
+      if (kind === 'panel') return { kind: 'panel', color: pickWeighted(rand, cfg.stFx.panel[result]) };
+      if (kind === 'minion') {
+        var color = MINION_COLOR[role];
+        if (result === 'direct' && rand() < cfg.stFx.minionMismatch) {
+          var others = ['red', 'green', 'purple', 'blue'].filter(function (c) { return c !== color; });
+          color = others[Math.floor(rand() * others.length)];
+        }
+        return { kind: 'minion', color: color };
+      }
+      return { kind: 'slash' };
     }
 
     // ----- 7揃い・カットイン ----------------------------------------------------
@@ -319,16 +382,22 @@
 
       if (st.battle) {
         // バトル中: 直撃抽選だけ。ゲーム数は減らない
-        if (direct) { winBattle('direct'); if (overkill) winBattle('overkill'); emit('direct', { inBattle: true, overkill: st.battle.overkill }); }
-        st.battle.left--;
-        out.battle = { left: st.battle.left };
-        if (st.battle.left <= 0) finishBattle();
+        var b = st.battle, n = cfg.battleGames - b.left + 1;
+        if (direct) { winBattle('direct'); if (overkill) winBattle('overkill'); emit('direct', { inBattle: true, overkill: b.overkill }); }
+        if (n === 3) b.winAt3 = b.win;
+        b.left--;
+        out.battle = { left: b.left, n: n };
+        if (b.left <= 0) finishBattle();
+        out.battleFx = battleFx(b, n);
+        if (out.battleFx) emit('battleFx', out.battleFx);
         return;
       }
 
       // ST中: ゲーム数を減らし、バトル突入を抽選
       st.games--;
       var toBattle = direct || RARE[role] || (role === 'replay' && rand() < cfg.battleFromReplay);
+      out.stFx = stFx(role, direct ? 'direct' : toBattle ? 'battle' : 'none', !!out.cutin);
+      if (out.stFx) emit('stFx', out.stFx);
       if (toBattle) {
         startBattle(false, false);
         if (direct) { winBattle('direct'); if (overkill) winBattle('overkill'); emit('direct', { inBattle: false, overkill: st.battle.overkill }); }
@@ -338,10 +407,8 @@
       if (st.games <= 0) endST();
     }
 
-    // ----- 武器選択フェーズ（1ゲーム） ---------------------------------------------
-    function playWeapon(out) {
-      var d = drawRole(true), role = d.role, crit = s.st && isCritical(role);
-      out.role = role; out.upgraded = d.upgraded; out.critical = !!crit; out.payout = payoutOf(role); addNet(role);
+    // ----- ボーナス当選後: 7揃い（擬似遊技）。小役を隠して引き、その小役で武器が決まる ----------------
+    function chooseWeapon(role, crit) {
       var row;
       if (role === 'mcherry') row = 'mcherry';
       else if (role === 'scherry') row = crit ? 'scherryC' : 'scherry';
@@ -362,13 +429,32 @@
       } else {
         target = Number(pickWeighted(rand, weapon.medals));
       }
+      return { weapon: weapon, medals: target, presses: presses };
+    }
+
+    function playSeven(out) {
+      var d = drawRole(true), role = d.role, crit = !!(s.st && isCritical(role));
+      var w = chooseWeapon(role, crit);
       var extra = s.pending && s.pending.overkill ? cfg.overkillMin : 0;
-      s.bonus = { weapon: weapon.id, weaponMedals: target, overkill: extra, target: target + extra, paid: 0, games: 0 };
-      out.weapon = { id: weapon.id, name: weapon.name, medals: target, presses: presses, overkill: extra };
-      emit('weapon', out.weapon);
-      if (s.pending && s.pending.upperCZ) emit('upperCZ', {});   // 仮: 上位ATのCZは未実装
-      emit('bonusStart', { target: s.bonus.target });
+      s.hidden = { role: role, upgraded: d.upgraded, critical: crit, weapon: w.weapon, medals: w.medals, presses: w.presses, overkill: extra, upperCZ: !!(s.pending && s.pending.upperCZ) };
       s.pending = null;
+      out.role = null;              // 引いた小役は隠す（次のゲームの出目で見せる）
+      out.payout = 0; s.totalNet -= cfg.bet;
+      out.weapon = { id: w.weapon.id, name: w.weapon.name };   // 第3停止で見せる（枚数はまだ）
+      emit('bonusWin', out.weapon);
+      s.phase = 'reveal';
+    }
+
+    // ----- 答え合わせのゲーム: 隠していた小役をリールで揃える。レバーで枚数を見せる ----------------
+    function playReveal(out) {
+      var h = s.hidden; s.hidden = null;
+      out.role = h.role; out.upgraded = h.upgraded; out.critical = h.critical;
+      out.payout = payoutOf(h.role); addNet(h.role);
+      s.bonus = { weapon: h.weapon.id, weaponMedals: h.medals, overkill: h.overkill, target: h.medals + h.overkill, paid: 0, games: 0 };
+      out.weapon = { id: h.weapon.id, name: h.weapon.name, medals: h.medals, presses: h.presses, overkill: h.overkill };
+      emit('weapon', out.weapon);
+      if (h.upperCZ) emit('upperCZ', {});   // 仮: 上位ATのCZは未実装
+      emit('bonusStart', { target: s.bonus.target });
       s.phase = 'bonus';
     }
 
@@ -427,10 +513,12 @@
           decideEnemy(d.role);
           out.enemy = s.st.enemy;
         } else if (s.phase === 'st') playST(out);
-        else if (s.phase === 'weapon') playWeapon(out);
+        else if (s.phase === 'seven') playSeven(out);
+        else if (s.phase === 'reveal') playReveal(out);
         else if (s.phase === 'bonus') playBonus(out);
         // リールの出目の形（st_reels.js の SHAPES の名前。'gase' はハズレのカットイン＝押した順で外し方が決まる）
-        if (out.cutin) out.shape = out.seven ? 'seven' : 'gase';
+        if (out.phase === 'seven') out.shape = 'seven';
+        else if (out.cutin) out.shape = out.seven ? 'seven' : 'gase';
         else out.shape = out.role === 'none' || !out.role ? 'none' : out.role;
         // 押し順ナビ（ナビが出るゲームだけ）。6通りから抽選
         if (out.navi && !out.cutin) out.naviOrder = NAV_ORDERS[Math.floor(rand() * NAV_ORDERS.length)].slice();
@@ -458,7 +546,7 @@
         return {
           phase: s.phase,
           game: s.game,
-          enemy: st ? { id: st.enemy, name: cfg.enemies[st.enemy].name } : null,
+          enemy: st ? { id: st.enemy, name: cfg.enemies[st.enemy].name, upper: !!st.upper } : null,
           lamps: st ? lampsNow() : [],
           stGames: st ? st.games : 0,
           battle: st && st.battle ? { left: st.battle.left, extraLamps: st.battle.extra.slice(), final: st.battle.final } : null,
