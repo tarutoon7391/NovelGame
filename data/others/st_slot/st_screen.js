@@ -123,6 +123,7 @@
       ui.bonusTitle = { name: w.name, color: WEAPON_COLOR[w.id], medals: null, overkill: w.overkill };   // 枚数は止まったあとの枚数決定画面で
     }
     if (r.phase === 'bonus') ui.bonusTitle = null;
+    if (r.phase === 'okzone') { ui.bonusTitle = null; ui.okz = ui.okz || { total: 0, add: 0, at: 0, cont: true }; ui.okz.spin = true; }
     ui.select = r.phase === 'enemySelect' ? { at: now(), enemy: r.enemy, done: 0 } : null;
     ui.stfx = r.stFx ? { fx: r.stFx, at: now(), done: 0, battle: !!r.battleStart } : null;
   }
@@ -160,7 +161,7 @@
   var BEN_LEVELS = [{ c: 'white', col: '#f4f4f4', min: 0 }, { c: 'blue', col: '#3a8aff', min: 300 }, { c: 'green', col: '#3fd46a', min: 510 }, { c: 'red', col: '#ff3a3a', min: 750 }, { c: 'rainbow', col: null, min: 1000 }];
   var KIN_STEPS = [510, 750, 1000, 2000, 3000];
   function startCount(d) {
-    var c = { id: d.id, name: d.name, medals: d.medals, overkill: d.overkill, presses: d.presses, at: now(), shown: false };
+    var c = { id: d.id, name: d.name, medals: d.medals, overkill: 0, okNext: !!d.overkill, presses: d.presses, at: now(), shown: false };
     if (d.id === 'mizuchi') { c.i = 0; c.total = 0; c.pop = 0; }
     if (d.id === 'bendigar') { c.level = 0; c.max = 0; BEN_LEVELS.forEach(function (L, k) { if (d.medals >= L.min) c.max = k; }); c.holding = false; c.holdMs = 0; }
     if (d.id === 'kinnoago') { c.started = false; c.step = 0; c.stepAt = 0; }
@@ -168,7 +169,7 @@
   }
   function finishCount() {
     var c = ui.count; c.shown = true; c.shownAt = now();
-    ui.bonusTitle = { name: c.name, color: WEAPON_COLOR[c.id], medals: c.medals + c.overkill, overkill: c.overkill };
+    ui.bonusTitle = { name: c.name, color: WEAPON_COLOR[c.id], medals: c.medals, overkill: 0, okNext: c.okNext };
   }
   function closeCount() { if (ui.count && ui.count.shown) { ui.count = null; ui.state = 'idle'; } }
   // ボタンを押した
@@ -221,7 +222,7 @@
     // 違和感（第3停止後にレバーが効かない）
     if (reviveKind() === 'leverLock' && ui.revivedAt === 0) ui.lock = { kind: 'lever', from: now() };
 
-    var inBattle = !!r.battleFx, quiet = inBattle || r.phase === 'seven' || r.phase === 'reveal';
+    var inBattle = !!r.battleFx, quiet = inBattle || r.phase === 'seven' || r.phase === 'reveal' || r.phase === 'okzone';
     ui.events.forEach(function (e) {
       var d = e.data;
       if (e.type === 'enemy') {
@@ -234,6 +235,10 @@
       if (e.type === 'bonusWin') { ui.bonusTitle = { name: d.name, color: WEAPON_COLOR[d.id], medals: null }; }   // 第3停止で武器（枚数はまだ）
       if (e.type === 'weapon') startCount(d);   // 答え合わせのゲームが止まったら、枚数決定画面
       if (e.type === 'pointsMax') show.push(['ポイント MAX！', '次のバトルの弱点 +1', '#ffd23a']);
+      if (e.type === 'okZoneAdd') ui.okz = { total: d.total, add: d.add, at: now(), cont: d.cont, games: d.games };
+      if (e.type === 'okZoneStart') ui.okz = { total: 0, add: 0, at: 0, cont: true };
+      if (e.type === 'okZoneEnd') { ui.okz.end = true; var bt0 = m.snapshot().bonus; show.push(['上乗せ 合計 ' + d.total + '枚！', 'ボーナス ' + (bt0 ? bt0.target : '') + '枚', '#ff3aa0']); }
+      if (e.type === 'bonusStart') { /* 枚数は答え合わせ・特化ゾーンのあとに見せている */ }
       if (e.type === 'bonusEnd') { ui.bonusTitle = null; ui.scene = null; show.push(['ボーナス終了', d.medals + '枚獲得', '#ffd23a']); }
       if (e.type === 'ending') show.push(['ENDING', 'おめでとう！', '#ffffff']);
       if (e.type === 'stEnd') { ui.state = 'over'; ui.scene = null; show.push(['ST 終了', '一連 ' + d.chainMedals + '枚 ／ ' + (EMBED ? 'R でもう一度・Esc で精算' : 'R ではじめから'), '#ff6a6a']); }
@@ -286,7 +291,7 @@
     var x = LCD.x, y = LCD.y, w = LCD.w, h = LCD.h;
     // ボーナスの画面にするのは、ボーナス当選後のゲームから（バトル4G目の勝利は、次のレバーまで見せておく）
     var gp = ui.game && ui.game.phase;
-    var bonusLike = gp === 'seven' || gp === 'reveal' || gp === 'bonus' || (!gp && s.phase === 'bonus');
+    var bonusLike = gp === 'seven' || gp === 'reveal' || gp === 'bonus' || gp === 'okzone' || (!gp && s.phase === 'bonus');
     var bg = bonusLike ? ['#3a2a00', '#7a5a10'] : s.battle ? ['#3a0a14', '#7a1a2a'] : ['#141a3a', '#3a2a5a'];
     var grad = g.createLinearGradient(0, y, 0, y + h); grad.addColorStop(0, bg[0]); grad.addColorStop(1, bg[1]);
     box(x, y, w, h, '#000', '#5a6080'); g.fillStyle = grad; g.fillRect(x, y, w, h);
@@ -321,9 +326,21 @@
       g.fillStyle = '#000000aa'; g.fillRect(x, y + 34, w, 76);
       txt(bt.name, x + w / 2, y + 70, 28, bt.color, 'center', true);
       if (bt.medals != null) txt(bt.medals + ' 枚' + (bt.overkill ? '（オーバーキル +' + bt.overkill + '）' : ''), x + w / 2, y + 98, 18, '#ffffff', 'center', true);
+      if (bt.okNext && bt.medals != null && Math.floor(t / 250) % 2) txt('このあと OVERKILL ZONE！', x + w / 2, y + 116, 12, '#ff3aa0', 'center', true);
 
     }
 
+    // オーバーキルの上乗せ特化ゾーン
+    if (gp === 'okzone' && ui.okz && !(ui.okz.end && ui.msg && ui.msg.until > t)) {
+      var z = ui.okz, pop = ui.state !== 'spinning' && t - z.at < 300 ? 4 : 0;
+      for (var b2 = 0; b2 < 3; b2++) { g.fillStyle = rainbow(t, b2); g.fillRect(x, y + 30 + b2 * 2, w, 1); g.fillRect(x, y + 118 - b2 * 2, w, 1); }
+      g.fillStyle = '#000000aa'; g.fillRect(x, y + 34, w, 82);
+      txt('OVERKILL ZONE', x + w / 2, y + 54, 16, rainbow(t), 'center', true);
+      txt(z.total + ' 枚', x + w / 2, y + 90 + pop, 28 + pop, '#ffffff', 'center', true);
+      if (ui.state !== 'spinning' && z.add && t - z.at < 1500) txt('+' + z.add, x + w / 2 + 96, y + 90, 20, z.add >= 1000 ? rainbow(t) : z.add >= 200 ? '#ff3aa0' : '#ffd23a', 'left', true);
+      var note = z.total < 300 ? '300枚まで 必ず上乗せ' : (ui.state === 'spinning' ? '継続抽選中…' : z.end ? '終了' : '継続！');
+      txt(note, x + w / 2, y + 110, 11, '#c9d3e0', 'center');
+    }
     // 押し順ナビ
     if (ui.navi && ui.state === 'spinning' && ui.game.naviOrder) {
       var NAME = ['左', '中', '右'], col = ui.navi === 'yellow' ? '#ffd23a' : '#ffffff';

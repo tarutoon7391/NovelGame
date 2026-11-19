@@ -45,7 +45,8 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 
 | キー | 説明 |
 | --- | --- |
-| `phase` | そのゲームの状態。`enemySelect`（敵決定ゲーム）/ `st` / `seven`（ボーナス当選後の7揃い・擬似遊技）/ `reveal`（隠していた小役の答え合わせ）/ `bonus` |
+| `phase` | そのゲームの状態。`enemySelect`（敵決定ゲーム）/ `st` / `seven`（ボーナス当選後の7揃い・擬似遊技）/ `reveal`（隠していた小役の答え合わせ）/ `okzone`（オーバーキルの上乗せ特化ゾーン）/ `bonus` |
+| `okzone` | 特化ゾーンのゲーム `{ add, total, cont, games }`。300枚に届くまでは毎ゲーム上乗せ、届いたら70%で継続 |
 | `game` | 通算ゲーム数 |
 | `role` | 役（`seven` のゲームでは `null`＝隠す）。`none` `bell3` `replay` `suika` `chance` `wcherry` `scherry` `mcherry`（ボーナス中は `bell15` も） |
 | `upgraded` | チェリー変換が起きたか |
@@ -98,6 +99,7 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 | `weapon` | `{ id, name, medals, presses, overkill }` | 答え合わせのゲームのレバー。ここで枚数を見せる。ミズチは `presses`（連打ごとの加算枚数の並び） |
 | `battleFx` / `stFx` | 上の表と同じ | 演出の抽選結果（レバーで始めて、結果は止まってから見せる） |
 | `upperCZ` | `{}` | 上位ATのCZへ（未実装） |
+| `okZoneStart` / `okZoneAdd` / `okZoneEnd` | `{}` / `{ add, total, cont, games }` / `{ total, games }` | オーバーキルの上乗せ特化ゾーン（枚数決定画面のあと、ボーナスの前） |
 | `bonusStart` | `{ target }` | ボーナス開始 |
 | `points` / `pointsMax` | `{ points, max, added }` / `{ extraLamps }` | ポイント加算 / 満タン |
 | `bonusEnd` | `{ medals, chainMedals }` | ボーナス終了 |

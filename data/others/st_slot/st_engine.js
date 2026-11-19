@@ -103,7 +103,18 @@
 
     // ボーナス
     bonus: { net: 9, yellowNavi: 0.75, bellPay: 15, smallPay: 3 },
-    overkillMin: 300,   // 仮: 特化ゾーンの中身が決まるまで、オーバーキルは +300枚固定
+    // オーバーキルの上乗せ特化ゾーン: 300枚に届くまでは毎ゲーム上乗せ。届いたあとは70%で継続
+    //   1回の上乗せ枚数は引いた役で決まる（「以上」の下限は仕様。上の振り分けは仮）
+    okZone: {
+      min: 300, cont: 0.70,
+      add: {
+        normal:  { 30: 60, 50: 25, 100: 10, 200: 5 },        // ハズレ・3枚役・リプレイ: 30枚以上
+        weak:    { 50: 50, 100: 30, 200: 15, 300: 5 },       // 弱チェリー・スイカ: 50枚以上
+        chance:  { 100: 60, 200: 30, 300: 10 },              // チャンス目: 100枚以上
+        scherry: { 200: 60, 300: 30, 500: 10 },              // 強チェリー: 200枚以上
+        mcherry: { 1000: 80, 2000: 20 }                      // 中段チェリー: 1000枚以上
+      }
+    },
 
     // 武器選択フェーズ: 引いた役 → 武器の振り分け [一式, ミズチ, ベンディガー, 金ノ顎]
     weaponTable: {
@@ -171,6 +182,7 @@
       totalNet: 0,            // 差枚（ST中のハズレの -3 も含む）
       pending: null,          // 当選後の流れ { overkill, upperCZ, reason }
       hidden: null,           // 7揃いのゲームで隠して引いた小役と武器
+      okzone: null,           // オーバーキルの上乗せ特化ゾーン { total, games }
       bonus: null             // { weapon, target, paid, games, presses }
     };
 
@@ -435,8 +447,7 @@
     function playSeven(out) {
       var d = drawRole(true), role = d.role, crit = !!(s.st && isCritical(role));
       var w = chooseWeapon(role, crit);
-      var extra = s.pending && s.pending.overkill ? cfg.overkillMin : 0;
-      s.hidden = { role: role, upgraded: d.upgraded, critical: crit, weapon: w.weapon, medals: w.medals, presses: w.presses, overkill: extra, upperCZ: !!(s.pending && s.pending.upperCZ) };
+      s.hidden = { role: role, upgraded: d.upgraded, critical: crit, weapon: w.weapon, medals: w.medals, presses: w.presses, overkill: !!(s.pending && s.pending.overkill), upperCZ: !!(s.pending && s.pending.upperCZ) };
       s.pending = null;
       out.role = null;              // 引いた小役は隠す（次のゲームの出目で見せる）
       out.payout = 0; s.totalNet -= cfg.bet;
@@ -450,12 +461,39 @@
       var h = s.hidden; s.hidden = null;
       out.role = h.role; out.upgraded = h.upgraded; out.critical = h.critical;
       out.payout = payoutOf(h.role); addNet(h.role);
-      s.bonus = { weapon: h.weapon.id, weaponMedals: h.medals, overkill: h.overkill, target: h.medals + h.overkill, paid: 0, games: 0 };
+      s.bonus = { weapon: h.weapon.id, weaponMedals: h.medals, overkill: 0, target: h.medals, paid: 0, games: 0 };
       out.weapon = { id: h.weapon.id, name: h.weapon.name, medals: h.medals, presses: h.presses, overkill: h.overkill };
       emit('weapon', out.weapon);
       if (h.upperCZ) emit('upperCZ', {});   // 仮: 上位ATのCZは未実装
+      if (h.overkill) {
+        // オーバーキル: ボーナスの前に上乗せ特化ゾーン
+        s.okzone = { total: 0, games: 0 };
+        emit('okZoneStart', {});
+        s.phase = 'okzone';
+        return;
+      }
       emit('bonusStart', { target: s.bonus.target });
       s.phase = 'bonus';
+    }
+
+    // ----- オーバーキルの上乗せ特化ゾーン（1ゲーム） ----------------------------
+    function playOkZone(out) {
+      var d = drawRole(true), role = d.role, z = s.okzone, t = cfg.okZone;
+      out.role = role; out.upgraded = d.upgraded;
+      out.payout = payoutOf(role); addNet(role);
+      var cat = role === 'mcherry' ? 'mcherry' : role === 'scherry' ? 'scherry' : role === 'chance' ? 'chance' : (role === 'wcherry' || role === 'suika') ? 'weak' : 'normal';
+      var add = Number(pickWeighted(rand, t.add[cat]));
+      z.total += add; z.games++;
+      var cont = z.total < t.min ? true : rand() < t.cont;
+      out.okzone = { add: add, total: z.total, cont: cont, games: z.games };
+      emit('okZoneAdd', out.okzone);
+      if (!cont) {
+        s.bonus.overkill = z.total; s.bonus.target += z.total;
+        emit('okZoneEnd', { total: z.total, games: z.games });
+        s.okzone = null;
+        emit('bonusStart', { target: s.bonus.target });
+        s.phase = 'bonus';
+      }
     }
 
     // ----- ボーナス（1ゲーム） ------------------------------------------------
@@ -515,6 +553,7 @@
         } else if (s.phase === 'st') playST(out);
         else if (s.phase === 'seven') playSeven(out);
         else if (s.phase === 'reveal') playReveal(out);
+        else if (s.phase === 'okzone') playOkZone(out);
         else if (s.phase === 'bonus') playBonus(out);
         // リールの出目の形（st_reels.js の SHAPES の名前。'gase' はハズレのカットイン＝押した順で外し方が決まる）
         if (out.phase === 'seven') out.shape = 'seven';
@@ -556,7 +595,8 @@
           chainMedals: s.chainMedals,
           totalNet: s.totalNet,
           ending: s.ending,
-          bonus: s.bonus ? { weapon: s.bonus.weapon, target: s.bonus.target, paid: s.bonus.paid } : null
+          bonus: s.bonus ? { weapon: s.bonus.weapon, target: s.bonus.target, paid: s.bonus.paid } : null,
+          okzone: s.okzone ? { total: s.okzone.total, games: s.okzone.games } : null
         };
       },
 
