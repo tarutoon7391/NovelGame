@@ -1,7 +1,7 @@
 /*
  * ST機の画面（ドット絵の仮の側）。st_engine.js（中身）と st_reels.js（リール制御）を使って、
  * 液晶のバトル・リール・右の宝石ランプ・左のポイントカウンタを 640x360 の canvas に描く。
- * 操作: Space = レバー／次のリールを止める・PUSH（ミズチ連打）  Z X C = 左 中 右を止める  R = ST をはじめから  Esc = 精算（組み込み時）
+ * 操作: Space = レバー／次のリールを止める・PUSH  Z X C = 左 中 右を止める  A = オート  F = 高速オート  R = ST をはじめから  Esc = 精算（組み込み時）
  *
  * 見せ方の決まり（結果が先に見えないように）
  * - 液晶の結果はリールが全部止まってから。バトルは4Gすべてに演出（1G 味方の攻撃／2G 敵の攻撃／3G つばぜり合いのオーラ／4G 決着）
@@ -39,6 +39,10 @@
   // 状態
   // ---------------------------------------------------------------------
   var m, seed, ui;
+  // オート: 0 = 手動 / 1 = オート / 2 = 高速オート（リールも速く回る）
+  var autoMode = 0, autoNext = 0;
+  var AUTO = { 1: { lever: 700, firstStop: 450, stop: 260, push: 70 }, 2: { lever: 120, firstStop: 90, stop: 60, push: 15 } };
+  function setAuto(mode) { autoMode = autoMode === mode ? 0 : mode; autoNext = 0; }
   var qs = new URLSearchParams(location.search), firstSeed = qs.has('seed') ? Number(qs.get('seed')) : null;
 
   // ノベルゲームに組み込むとき（?embed=1&money=所持金）: 1枚20円、クレジットが足りないと1,000円で50枚借りる。Esc で精算して帰る
@@ -79,7 +83,7 @@
       bonusTitle: null          // ボーナス当選後に見せている武器・枚数 { name, color, medals }
     };
     m.on(function (e) { ui.events.push(e); });
-    say('ST スタート！', EMBED ? 'Space でレバー ／ Esc で精算して帰る' : 'Space でレバー、Z X C で停止', '#ffd23a', 2500);
+    say('ST スタート！', EMBED ? 'Space でレバー ／ A・F オート ／ Esc で精算' : 'Space でレバー ／ A オート ／ F 高速オート', '#ffd23a', 2500);
   }
   function say(text, sub, color, ms) { ui.msg = { text: text, sub: sub || '', color: color || '#ffffff', until: now() + (ms || 1800) }; }
   function now() { return performance.now(); }
@@ -313,6 +317,7 @@
     if (s.enemy && !bonusLike) { box(x + w - 158, y + 8, 150, 16, '#000000aa', '#ffffff55'); txt(s.enemy.name, x + w - 83, y + 21, 12, '#ffffff', 'center'); }
     var label = bonusLike ? 'BONUS' : s.battle ? (s.battle.final ? 'FINAL BATTLE' : 'BATTLE') : s.phase === 'enemySelect' ? 'ENEMY SELECT' : s.phase === 'end' ? 'GAME OVER' : (s.enemy && s.enemy.upper ? '最強ST' : 'ST');
     box(x + 6, y + 8, 120, 16, '#000000aa', '#ffffff55'); txt(label, x + 66, y + 21, 12, '#ffd23a', 'center', true);
+    if (autoMode) txt(autoMode === 2 ? '高速AUTO' : 'AUTO', x + 132, y + 21, 11, autoMode === 2 ? '#ff9a3a' : '#3fd46a', 'left', true);
 
     // 下の帯
     var info = s.bonus && !ui.bonusTitle ? ('獲得 ' + s.bonus.paid + ' / ' + s.bonus.target + ' 枚') : s.battle ? ((s.battle.left === 4 && ui.state !== 'spinning' ? 'バトル突入' : 'バトル ' + (4 - s.battle.left + (ui.state === 'spinning' ? 1 : 0)) + 'G目') + '　（ST ' + s.stGames + 'G で止まっている）') : s.enemy && !bonusLike ? ('ST 残り ' + s.stGames + 'G') : '';
@@ -565,6 +570,11 @@
     txt('Space', 170, 334, 10, '#8d99a8', 'center');
     var canPush = ui.state === 'count';
     box(456, 290, 40, 30, canPush ? '#5ad1ff' : '#2a2f45', '#000'); txt('PUSH', 476, 309, 10, canPush ? '#000' : '#8d99a8', 'center', true);
+    // オートのボタン（A / F）
+    var a1 = autoMode === 1, a2 = autoMode === 2;
+    box(540, 290, 36, 14, a1 ? '#3fd46a' : '#2a2f45', '#000'); txt('AUTO', 558, 301, 9, a1 ? '#000' : '#8d99a8', 'center', true);
+    box(540, 308, 36, 14, a2 ? '#ff9a3a' : '#2a2f45', '#000'); txt('高速', 558, 319, 9, a2 ? '#000' : '#8d99a8', 'center', true);
+    txt('A / F', 558, 334, 8, '#5a6080', 'center');
   }
 
   function drawGems(t, s) {
@@ -607,12 +617,36 @@
   }
 
   // ---------------------------------------------------------------------
+  // オート（レバー → ナビ・逆押しどおりに停止 → 枚数決定画面のボタンまで自動）
+  // ---------------------------------------------------------------------
+  function autoStep(t) {
+    if (!autoMode) return;
+    var A2 = AUTO[autoMode];
+    if (ui.state === 'over' || closed) { autoMode = 0; return; }
+    if (t < autoNext) return;
+    if (ui.state === 'idle') {
+      if (locked()) return;
+      if (!ensureCreditPeek()) { autoMode = 0; return; }
+      lever(); autoNext = t + A2.firstStop; return;
+    }
+    if (ui.state === 'spinning') { nextStop(); autoNext = t + A2.stop; return; }
+    if (ui.state === 'count') {
+      var c = ui.count;
+      if (c.shown) return;
+      if (c.id === 'bendigar') { if (!c.holding) pushDown(); if (c.level >= c.max) pushUp(); autoNext = t + A2.push; return; }
+      if (c.id === 'kinnoago' && c.started) return;
+      pushDown(); autoNext = t + A2.push; return;
+    }
+  }
+  function ensureCreditPeek() { return !EMBED || wallet.credit >= 3 || MONEY0 - wallet.invest >= 1000; }
+
+  // ---------------------------------------------------------------------
   // ループ
   // ---------------------------------------------------------------------
   var last = now();
   function frame(t) {
     var dt = Math.min(50, t - last); last = t;
-    var speed = 0.018 * dt * 1.2;
+    var speed = 0.018 * dt * 1.2 * (autoMode === 2 ? 3 : 1);
     ui.reels.forEach(function (rl) {
       if (!rl.spinning) return;
       if (rl.target === null) { rl.pos -= speed; if (rl.pos < 0) rl.pos += R.LENGTH; return; }
@@ -620,8 +654,9 @@
       if (d <= speed) { rl.pos = rl.target; rl.spinning = false; rl.target = null; }
       else { rl.pos -= Math.min(speed, d); if (rl.pos < 0) rl.pos += R.LENGTH; }
     });
-    if (ui.state === 'spinning' && ui.reels.every(function (rl) { return !rl.spinning; })) allStopped();
-    updateCount(t, dt);
+    if (ui.state === 'spinning' && ui.reels.every(function (rl) { return !rl.spinning; })) { allStopped(); if (autoMode) autoNext = t + AUTO[autoMode].lever; }
+    updateCount(t, dt * (autoMode === 2 ? 3 : 1));
+    autoStep(t);
     // 違和感から2秒で復活
     if (ui.lock && t - ui.lock.from >= LOCK_MS) { ui.lock = null; ui.revivedAt = t; }
     if (ui.revivedAt && ui.state === 'idle' && t - ui.revivedAt > 4000 && ui.scene && ui.scene.kind === 'down') { ui.scene = { kind: 'victory', at: t, overkill: ui.bfx && ui.bfx.fx.overkill }; }
@@ -652,13 +687,17 @@
     else if (e.code === 'KeyX' || e.code === 'ArrowDown') stop(1);
     else if (e.code === 'KeyC' || e.code === 'ArrowRight') stop(2);
     else if (e.code === 'KeyR') { if (!EMBED || ui.state === 'over') boot(); }
-    else if (e.code === 'Escape') settle();
+    else if (e.code === 'Escape') { autoMode = 0; settle(); }
+    else if (e.code === 'KeyA') setAuto(1);
+    else if (e.code === 'KeyF') setAuto(2);
   });
   cv.addEventListener('pointerdown', function (e) {
     var r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
     for (var i = 0; i < 3; i++) { var rx = REEL.x + i * (REEL.cw + REEL.gap); if (x >= rx && x <= rx + REEL.cw && y >= 290 && y <= 320) return stop(i); }
     if (x >= 140 && x <= 200 && y >= 260 && y <= 330) return lever();
     if (x >= 450 && x <= 500 && y >= 285 && y <= 325) return pushDown();
+    if (x >= 536 && x <= 580 && y >= 286 && y <= 305) return setAuto(1);
+    if (x >= 536 && x <= 580 && y >= 306 && y <= 325) return setAuto(2);
     if (EMBED && x >= 20 && x <= 90 && y >= 318 && y <= 348) return settle();
     if (ui.state === 'over' && !EMBED) return boot();
     if (ui.state === 'spinning') nextStop(); else lever();
