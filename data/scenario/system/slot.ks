@@ -73,11 +73,11 @@ for (var i = 0; i < 6; i++) {
 [glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="252"  text="&f.slot_hall[4].label"  target="*sit"  exp="f.slot_pick = 4"  ]
 [glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="900"  y="310"  text="&f.slot_hall[5].label"  target="*sit"  exp="f.slot_pick = 5"  ]
 ;7台目：GOLDEN（Aタイプ）。中身は data/others/golden/（ソースは tools/golden-slot/ を Vite でビルドしたもの）
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="270"  y="368"  text="No.107　GOLDEN"  target="*sit_frame"  exp="f.slot_frame = 'golden'"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="190"  width="240"  y="368"  text="No.107　GOLDEN"  target="*sit_frame"  exp="f.slot_frame = 'golden'"  ]
 ;8台目：こおりくんの大冒険（AT機）。中身は data/others/koori/（ソースは tools/koori-slot/ を1ファイルにビルドしたもの）
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="500"  width="270"  y="368"  text="No.108　こおりくん"  target="*sit_frame"  exp="f.slot_frame = 'koori'"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="500"  width="240"  y="368"  text="No.108　こおりくん"  target="*sit_frame"  exp="f.slot_frame = 'koori'"  ]
 ;9台目：本番用のST機（開発中）。中身は data/others/st_slot/（素のJS。ビルドなし）
-[glink  color="black"  storage="system/slot.ks"  size="22"  x="810"  width="270"  y="368"  text="No.109　ST機（新台）"  target="*sit_frame"  exp="f.slot_frame = 'st'"  ]
+[glink  color="black"  storage="system/slot.ks"  size="22"  x="810"  width="240"  y="368"  text="No.109　ST機（新台）"  target="*sit_frame"  exp="f.slot_frame = 'st'"  ]
 [glink  color="black"  storage="system/slot.ks"  size="22"  x="390"  width="500"  y="426"  text="やっぱり、帰る"  target="*go_home"  ]
 [s]
 
