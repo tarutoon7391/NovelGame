@@ -145,7 +145,7 @@
       gekirinDone: false,
       nextEnemy: null,        // 次のSTの敵が決まっているとき（アマテラスのループ・中段チェリー）
       ending: false,
-      totalNet: 0,            // 差枚（このデモではボーナスの純増だけ）
+      totalNet: 0,            // 差枚（ST中のハズレの -3 も含む）
       pending: null,          // 当選後の流れ { overkill, upperCZ, reason }
       bonus: null             // { weapon, target, paid, games, presses }
     };
@@ -172,12 +172,15 @@
       return { role: role, upgraded: upgraded };
     }
 
-    // ナビ（ST中: 3枚役とリプレイ。どちらも3枚分なのでST中はメダルが増減しない）
+    // ナビ（ST中: 3枚役とリプレイだけ。ハズレとレア役はナビなし）
     function stNavi(role) {
       if (role === 'replay') return 'replay';
-      if (role === 'bell3' || role === 'none') return 'bell3';
-      return null;   // レア役はナビなし
+      if (role === 'bell3') return 'bell3';
+      return null;
     }
+    // ボーナス以外の払い出し（3枚役は3枚、リプレイは次のゲームがタダ＝3枚分、ハズレは0）。仮: レア役は0（払い出しが決まったら直す）
+    function payoutOf(role) { return role === 'bell3' || role === 'replay' ? cfg.bet : 0; }
+    function addNet(role) { s.totalNet += payoutOf(role) - cfg.bet; }
 
     function lampsNow() {
       var e = cfg.enemies[s.st.enemy];
@@ -295,7 +298,7 @@
       out.role = role; out.upgraded = d.upgraded; out.navi = stNavi(role);
       out.critical = isCritical(role);
       out.lamps = lampsNow();
-      out.payout = cfg.bet;   // ST中は増減なし（仮: レア役の払い出しはリール配列が決まったら）
+      out.payout = payoutOf(role); addNet(role);
 
       // 7揃い（ST中もバトル中も）
       var sv = sevenLottery();
@@ -338,7 +341,7 @@
     // ----- 武器選択フェーズ（1ゲーム） ---------------------------------------------
     function playWeapon(out) {
       var d = drawRole(true), role = d.role, crit = s.st && isCritical(role);
-      out.role = role; out.upgraded = d.upgraded; out.critical = !!crit; out.payout = cfg.bet;
+      out.role = role; out.upgraded = d.upgraded; out.critical = !!crit; out.payout = payoutOf(role); addNet(role);
       var row;
       if (role === 'mcherry') row = 'mcherry';
       else if (role === 'scherry') row = crit ? 'scherryC' : 'scherry';
@@ -420,7 +423,7 @@
         var out = { phase: s.phase, game: s.game };
         if (s.phase === 'enemySelect') {
           var d = drawRole(true);
-          out.role = d.role; out.upgraded = d.upgraded; out.payout = cfg.bet;
+          out.role = d.role; out.upgraded = d.upgraded; out.payout = payoutOf(d.role); addNet(d.role);
           decideEnemy(d.role);
           out.enemy = s.st.enemy;
         } else if (s.phase === 'st') playST(out);
@@ -428,7 +431,6 @@
         else if (s.phase === 'bonus') playBonus(out);
         // リールの出目の形（st_reels.js の SHAPES の名前。'gase' はハズレのカットイン＝押した順で外し方が決まる）
         if (out.cutin) out.shape = out.seven ? 'seven' : 'gase';
-        else if ((out.phase === 'st') && (out.role === 'none' || out.role === 'bell3')) out.shape = 'bell3';   // ST中のハズレは3枚役で返す
         else out.shape = out.role === 'none' || !out.role ? 'none' : out.role;
         // 押し順ナビ（ナビが出るゲームだけ）。6通りから抽選
         if (out.navi && !out.cutin) out.naviOrder = NAV_ORDERS[Math.floor(rand() * NAV_ORDERS.length)].slice();
