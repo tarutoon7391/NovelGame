@@ -150,6 +150,9 @@
       bonus: null             // { weapon, target, paid, games, presses }
     };
 
+    var NAV_ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    var lastGain = 0;
+
     function emit(type, data) {
       var ev = { type: type, game: s.game, data: data || {} };
       for (var i = 0; i < listeners.length; i++) listeners[i](ev);
@@ -427,8 +430,19 @@
         if (out.cutin) out.shape = out.seven ? 'seven' : 'gase';
         else if ((out.phase === 'st') && (out.role === 'none' || out.role === 'bell3')) out.shape = 'bell3';   // ST中のハズレは3枚役で返す
         else out.shape = out.role === 'none' || !out.role ? 'none' : out.role;
+        // 押し順ナビ（ナビが出るゲームだけ）。6通りから抽選
+        if (out.navi && !out.cutin) out.naviOrder = NAV_ORDERS[Math.floor(rand() * NAV_ORDERS.length)].slice();
+        lastGain = out.phase === 'bonus' ? Math.max(0, out.payout - cfg.bet) : 0;
         emit('game', out);
         return out;
+      },
+
+      // 押し順ナビに従わずベルを取りこぼしたとき、側から呼ぶ（ボーナス中はそのゲームの払い出しを取り消す）
+      missLast: function () {
+        if (!lastGain) return;
+        s.totalNet -= lastGain;
+        if (s.bonus) s.bonus.paid -= lastGain;
+        lastGain = 0;
       },
 
       // ST をはじめからやり直す（デモ用。通常時が決まるまでは、ここからスタート）

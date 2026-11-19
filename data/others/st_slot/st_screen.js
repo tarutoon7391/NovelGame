@@ -17,6 +17,7 @@
     { id: 'replay', color: 'blue', name: 'リプレイ' }
   ];
   var ROLE_JA = { none: 'ハズレ', bell3: '3枚役', bell15: '15枚ベル', replay: 'リプレイ', suika: 'スイカ', chance: 'チャンス目', wcherry: '弱チェリー', scherry: '強チェリー', mcherry: '中段チェリー' };
+  var RARE_JA = { suika: ['スイカ！', '#5aff7a'], chance: ['チャンス目！', '#b07aff'], wcherry: ['チェリー！', '#ff7a90'], scherry: ['強チェリー！！', '#ff3a5a'], mcherry: ['中段チェリー！！！', '#ffd23a'] };
   var WEAPON_COLOR = { isshiki: '#c9d3e0', mizuchi: '#5ad1ff', bendigar: '#ff9a3a', kinnoago: '#ffd23a' };
   var CUTIN = { blue: ['#123a8a', '#5aa9ff'], red: ['#8a1020', '#ff5a6a'], gold: ['#8a6a00', '#ffe066'] };
 
@@ -54,12 +55,12 @@
   function lever() {
     if (ui.state === 'mizuchi') return pushMizuchi();
     if (ui.state !== 'idle') return;
-    ui.events = []; ui.win = null; ui.fx = null;
+    ui.events = []; ui.win = null; ui.fx = null; ui.msg = null; ui.sub2 = null;
     ui.view = m.snapshot();   // リールが止まるまでは、レバー前の状態を見せる（結果は止まってから）
     var r = m.lever();
     if (!r) { ui.state = 'over'; say('ST 終了', 'R で ST をはじめから', '#ff6a6a', 99999); return; }
     ui.game = r;
-    ui.ctl = R.createReelControl(r.shape);
+    ui.ctl = R.createReelControl(r.shape, r.naviOrder);
     ui.reels.forEach(function (rl) { rl.spinning = true; rl.target = null; });
     ui.spunAt = now();
     ui.state = 'spinning';
@@ -82,8 +83,8 @@
   }
   function nextStop() {
     if (ui.state !== 'spinning') return lever();
-    // カットイン中は逆押し（右→中→左）、それ以外は左から
-    var order = ui.game && ui.game.cutin ? [2, 1, 0] : [0, 1, 2];
+    // カットイン中は逆押し（右→中→左）、押し順ナビがあればその順、それ以外は左から
+    var order = ui.game && ui.game.cutin ? [2, 1, 0] : ui.game && ui.game.naviOrder ? ui.game.naviOrder : [0, 1, 2];
     for (var k = 0; k < 3; k++) { var rl = ui.reels[order[k]]; if (rl.spinning && rl.target === null) return stop(order[k]); }
   }
 
@@ -102,6 +103,7 @@
     var grid = R.gridAt(ui.ctl.tops);
     ui.win = R.lineWin(grid);
     var r = ui.game, show = [];
+    if (r.naviOrder && !ui.ctl.followed) { m.missLast(); show.push(['取りこぼし…', '押し順ナビに従ってね', '#8d99a8']); }
     ui.events.forEach(function (e) {
       var d = e.data;
       if (e.type === 'enemy') show.push(['VS ' + d.name, '弱点: ' + (d.lamps.map(function (l) { return LAMPS.filter(function (x) { return x.id === l; })[0].name; }).join('・') || 'なし'), '#c4a0ff']);
@@ -125,6 +127,7 @@
     });
     if (r.direct && !r.battleStart && !(r.battle)) { /* ST中の直撃はバトル開始と一緒に見せる */ }
     if (r.critical) show.unshift(['CRITICAL!', ROLE_JA[r.role] + ' は弱点！', '#ffd23a']);
+    else if (RARE_JA[r.role] && !r.cutin) show.unshift([RARE_JA[r.role][0], r.upgraded ? 'チェリー変換！' : '', RARE_JA[r.role][1]]);
     if (show.length) { var last = show[show.length - 1]; say(last[0], last[1], last[2], ui.state === 'over' ? 99999 : 2200); if (show.length > 1) { var first = show[0]; ui.sub2 = { text: first[0] + '　' + first[1], until: now() + 2200 }; } }
   }
 
@@ -189,9 +192,9 @@
     if (s.vstock) txt('V×' + s.vstock, x + w - 10, y + h - 10, 12, '#ff5a5a', 'right', true);
 
     // ナビ（ST中: 3枚役かリプレイ。ボーナス中: 黄と白）
-    if (ui.navi && ui.state === 'spinning') {
-      var nv = ui.navi === 'yellow' ? ['15枚ベル を狙え！', '#ffd23a'] : ui.navi === 'white' ? ['？ を狙え', '#ffffff'] : ['3枚役？ リプレイ？', '#9fd0ff'];
-      txt(nv[0], x + w / 2, y + 42, 16, nv[1], 'center', true);
+    if (ui.navi && ui.state === 'spinning' && ui.game.naviOrder) {
+      var NAME = ['左', '中', '右'], col = ui.navi === 'yellow' ? '#ffd23a' : '#ffffff';
+      txt('押し順ナビ　' + ui.game.naviOrder.map(function (i) { return NAME[i]; }).join(' → '), x + w / 2, y + 44, 16, col, 'center', true);
     }
     // ミズチ連打
     if (ui.mizuchi) {
@@ -236,6 +239,12 @@
       }
       if (rl.spinning && rl.target === null) { g.fillStyle = '#ffffff44'; g.fillRect(rx, y0, cw, ch * 3); }
       g.restore();
+      // 押し順ナビの番号（リールの上）
+      if (ui.state === 'spinning' && ui.game && ui.game.naviOrder) {
+        var no = ui.game.naviOrder.indexOf(i) + 1, ncol = ui.navi === 'yellow' ? '#ffd23a' : '#ffffff';
+        var done = !rl.spinning || rl.target !== null;
+        if (!done) { box(rx + 20, y0 - 22, 24, 16, ncol, '#000'); txt(String(no), rx + 32, y0 - 9, 14, '#000', 'center', true); }
+      }
       // 停止ボタン
       var lit = rl.spinning && rl.target === null && ui.state === 'spinning';
       box(rx + 16, 300, 32, 14, lit ? '#ff5a3a' : '#3a3f5a', '#000');

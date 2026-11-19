@@ -58,6 +58,7 @@ var machine = StSlot.createMachine({ seed: 123 });   // seed は省略可（省�
 | `weapon` | 武器選択の結果（`weapon` イベントと同じ） |
 | `bonus` | ボーナス中の `{ paid, target }` |
 | `payout` | 払い出し枚数 |
+| `naviOrder` | 押し順ナビ（例 `[1, 0, 2]` = 中→左→右）。ナビが出るゲームだけ。側は `createReelControl(shape, naviOrder)` に渡す。従わずベルを取りこぼしたら `machine.missLast()` を呼ぶ |
 | `shape` | リールの出目の形（`st_reels.js` の `SHAPES` の名前）。`gase` はハズレのカットインで、押した順で外し方が決まる |
 
 ### `snapshot()`

@@ -70,6 +70,9 @@
     wcherry: function (c) { return left(c, LEFT.RXC) && (c[2][1] === 'replay' || c[2][1] === 'bell') && lineWin(c) === null && clean(c); },
     scherry: function (c) { return left(c, LEFT.RXC) && isBonus(c[2][1]) && !isBonus(c[1][1]) && lineWin(c) === null && clean(c); },
     mcherry: function (c) { return left(c, LEFT.XCB) && c[1][1] === c[0][0] && c[2][2] === c[0][0] && lineWin(c) === null && clean(c, { down: 'bonus' }); },
+    // 押し順ナビに従わなかったときの取りこぼし（ベルが揃わない）
+    bell3Miss: function (c) { return left(c, LEFT.BRX) && lineWin(c) === null && clean(c); },
+    bell15Miss: function (c) { return left(c, LEFT.BRX) && lineWin(c) === null && clean(c); },
     // 7揃い（中段）
     seven: function (c) { return lineWin(c) === 'seven'; },
     // ハズレのカットイン（押し順で外し方が変わる。仕様書「押し順と告知」）
@@ -104,10 +107,17 @@
     return list;
   }
 
-  // 1ゲーム分の制御。shape は形の名前、または 'gase'（押した順で形が決まる）
-  function createReelControl(shape) {
+  // 押し順ナビ: ナビの順（nav）どおりに押しているあいだは shape、外れたら shape + 'Miss'（ベルだけ。リプレイは取りこぼさない）
+  function naviShape(shape, nav, order) {
+    if (!nav || !SHAPES[shape + 'Miss']) return shape;
+    for (var i = 0; i < order.length; i++) if (order[i] !== nav[i]) return shape + 'Miss';
+    return shape;
+  }
+
+  // 1ゲーム分の制御。shape は形の名前、または 'gase'（押した順で形が決まる）。nav = 押し順ナビ [リール, リール, リール]
+  function createReelControl(shape, nav) {
     var stopped = [null, null, null], order = [];
-    function shapeNow() { return shape === 'gase' ? gaseShape(order) : shape; }
+    function shapeNow() { return shape === 'gase' ? gaseShape(order) : naviShape(shape, nav, order); }
     return {
       stop: function (reel, press) {
         if (stopped[reel] !== null) return null;
@@ -122,12 +132,15 @@
         throw new Error('止まる位置がありません');
       },
       get tops() { return stopped.slice(); },
-      get order() { return order.slice(); }
+      get order() { return order.slice(); },
+      get shape() { return shapeNow(); },
+      // ナビどおりに押せたか（取りこぼしたら false）
+      get followed() { return !/Miss$/.test(shapeNow()); }
     };
   }
 
   // 役 → 出目の形
   function shapeForRole(role) { return SHAPES[role] ? role : 'none'; }
 
-  return { STRIPS: STRIPS, LENGTH: LEN, SHAPES: SHAPES, wrap: wrap, windowAt: windowAt, gridAt: gridAt, lineWin: lineWin, combosFor: combosFor, createReelControl: createReelControl, shapeForRole: shapeForRole, gaseShape: gaseShape };
+  return { STRIPS: STRIPS, LENGTH: LEN, SHAPES: SHAPES, wrap: wrap, windowAt: windowAt, gridAt: gridAt, lineWin: lineWin, combosFor: combosFor, createReelControl: createReelControl, shapeForRole: shapeForRole, gaseShape: gaseShape, naviShape: naviShape };
 });
